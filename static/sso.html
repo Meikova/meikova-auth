@@ -34,6 +34,26 @@
       box-sizing: border-box;
       margin: 0;
       padding: 0;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+    }
+
+    /* Zero-Native-Scrollbars: 5px thin, rounded, transparent track, neon hover */
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 9999px;
+      transition: background 0.2s ease;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
     }
 
     body {
@@ -229,6 +249,25 @@
     .form-input:focus {
       border-color: var(--accent);
       box-shadow: 0 0 0 1px var(--accent), 0 0 14px -2px var(--accent-glow);
+    }
+
+    /* Zero-Autofill-Override: Neutralizes WebKit/Blink default white/light-blue background */
+    .form-input:-webkit-autofill,
+    .form-input:-webkit-autofill:hover, 
+    .form-input:-webkit-autofill:focus, 
+    .form-input:-webkit-autofill:active {
+      -webkit-text-fill-color: var(--text) !important;
+      caret-color: var(--accent) !important;
+      -webkit-box-shadow: 0 0 0 1000px #0e131d inset !important;
+      box-shadow: 0 0 0 1000px #0e131d inset !important;
+      transition: background-color 50000s ease-in-out 0s !important;
+      border-color: var(--card-border) !important;
+    }
+
+    .form-input:-webkit-autofill:focus {
+      border-color: var(--accent) !important;
+      -webkit-box-shadow: 0 0 0 1000px #0e131d inset, 0 0 0 1px var(--accent), 0 0 14px -2px var(--accent-glow) !important;
+      box-shadow: 0 0 0 1000px #0e131d inset, 0 0 0 1px var(--accent), 0 0 14px -2px var(--accent-glow) !important;
     }
 
     .form-input::placeholder {
