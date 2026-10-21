@@ -111,6 +111,17 @@ def run_tests():
     code, body = http_request(f"{base_url}/health")
     log_step("GET /health", code == 200 and body.get("status") == "healthy", f"Backend: {body.get('database', {}).get('backend')}, Keys Loaded: {body.get('crypto', {}).get('public_key_loaded')}")
 
+    # 1.1 Web SSO Portal Pages
+    req_login = urllib.request.Request(f"{base_url}/login")
+    with urllib.request.urlopen(req_login) as resp:
+        login_html = resp.read().decode("utf-8")
+        log_step("GET /login (SSO Portal UI)", resp.status == 200 and "Meikova ID" in login_html)
+
+    req_reg = urllib.request.Request(f"{base_url}/register")
+    with urllib.request.urlopen(req_reg) as resp:
+        reg_html = resp.read().decode("utf-8")
+        log_step("GET /register (SSO Portal UI)", resp.status == 200 and "Tạo tài khoản" in reg_html)
+
     # 2. Key Export & JWKS
     code, body = http_request(f"{base_url}/api/auth/keys")
     log_step("GET /api/auth/keys", code == 200 and "public_key_pem" in body, f"Alg: {body.get('algorithm')}, JWKS keys: {len(body.get('jwks', {}).get('keys', []))}")

@@ -134,6 +134,22 @@ def health_check():
     }
 
 
+@app.get("/login", response_class=FileResponse)
+def get_login_page(client_id: Optional[str] = None, origin: Optional[str] = None, redirect_uri: Optional[str] = None):
+    sso_page = static_dir / "sso.html"
+    if sso_page.exists():
+        return FileResponse(sso_page, media_type="text/html")
+    raise HTTPException(status_code=404, detail="SSO Portal UI not found")
+
+
+@app.get("/register", response_class=FileResponse)
+def get_register_page(client_id: Optional[str] = None, origin: Optional[str] = None, redirect_uri: Optional[str] = None):
+    sso_page = static_dir / "sso.html"
+    if sso_page.exists():
+        return FileResponse(sso_page, media_type="text/html")
+    raise HTTPException(status_code=404, detail="SSO Portal UI not found")
+
+
 @app.get("/favicon.ico")
 def get_favicon():
     fav = static_dir / "favicon.ico"

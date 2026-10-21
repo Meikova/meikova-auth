@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Meikova ID — Cổng Xác Thực Tập Trung</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    :root {
+      --bg: #0A0D14;
+      --card-bg: rgba(17, 23, 34, 0.85);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --card-border-focus: rgba(56, 189, 248, 0.4);
+      --text: #F1F5F9;
+      --text-muted: #94A3B8;
+      --text-dim: #64748B;
+      --accent: #38BDF8;
+      --accent-glow: rgba(56, 189, 248, 0.25);
+      --accent-hover: #0284C7;
+      --success: #10B981;
+      --danger: #EF4444;
+      --danger-bg: rgba(239, 68, 68, 0.12);
+      --danger-border: rgba(239, 68, 68, 0.3);
+      --radius: 12px;
+      --font-sans: 'Be Vietnam Pro', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      overflow-x: hidden;
+      position: relative;
+    }
+
+    /* Ambient background lighting */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -20%;
+      left: 20%;
+      width: 60vw;
+      height: 60vh;
+      background: radial-gradient(circle, rgba(56, 189, 248, 0.08) 0%, rgba(10, 13, 20, 0) 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .auth-card {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 440px;
+      background: var(--card-bg);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 32px 28px;
+      box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.6), 0 0 0 1px var(--card-border);
+    }
+
+    .brand-header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .brand-logo {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 10px;
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.15), rgba(16, 185, 129, 0.05));
+      border: 1px solid rgba(56, 189, 248, 0.25);
+    }
+
+    .brand-logo svg {
+      width: 28px;
+      height: 28px;
+    }
+
+    .brand-title {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+
+    .brand-subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .client-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 8px;
+      padding: 4px 10px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--card-border);
+      border-radius: 999px;
+      font-size: 11px;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+    }
+
+    .client-badge svg {
+      width: 12px;
+      height: 12px;
+      color: var(--accent);
+    }
+
+    /* Tabs */
+    .tab-deck {
+      display: flex;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 3px;
+      margin-bottom: 20px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      padding: 8px;
+      font-family: var(--font-sans);
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .tab-btn.active {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+
+    /* Alerts */
+    .banner {
+      display: none;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-size: 12.5px;
+      margin-bottom: 16px;
+      align-items: center;
+      gap: 10px;
+      line-height: 1.4;
+    }
+
+    .banner.error {
+      display: flex;
+      background: var(--danger-bg);
+      border: 1px solid var(--danger-border);
+      color: #FCA5A5;
+    }
+
+    .banner.success {
+      display: flex;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #6EE7B7;
+    }
+
+    .banner svg {
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+
+    /* Forms */
+    .form-group {
+      margin-bottom: 14px;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .input-wrap {
+      position: relative;
+    }
+
+    .form-input {
+      width: 100%;
+      height: 42px;
+      background: rgba(11, 15, 22, 0.7);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 0 12px;
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-size: 13.5px;
+      appearance: none;
+      -webkit-appearance: none;
+      outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .form-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent), 0 0 14px -2px var(--accent-glow);
+    }
+
+    .form-input::placeholder {
+      color: var(--text-dim);
+    }
+
+    .btn-submit {
+      width: 100%;
+      height: 44px;
+      background: var(--accent);
+      color: #0A0D14;
+      font-family: var(--font-sans);
+      font-size: 14px;
+      font-weight: 700;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: background 0.15s ease, transform 0.1s ease;
+      margin-top: 8px;
+    }
+
+    .btn-submit:hover {
+      background: var(--accent-hover);
+      color: #FFFFFF;
+    }
+
+    .btn-submit:active {
+      transform: scale(0.99);
+    }
+
+    .btn-submit:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      margin: 20px 0;
+      color: var(--text-dim);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .divider::before,
+    .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--card-border);
+    }
+
+    .divider span {
+      padding: 0 12px;
+    }
+
+    /* Google Button Wrapper */
+    .google-btn-wrap {
+      display: flex;
+      justify-content: center;
+    }
+
+    /* Footer Note */
+    .card-footer {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 11.5px;
+      color: var(--text-dim);
+    }
+
+    .card-footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    .card-footer a:hover {
+      text-decoration: underline;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(10, 13, 20, 0.3);
+      border-top-color: #0A0D14;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="auth-card">
+    <div class="brand-header">
+      <div class="brand-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          <path d="m9 12 2 2 4-4"/>
+        </svg>
+      </div>
+      <h1 class="brand-title">Meikova ID</h1>
+      <p class="brand-subtitle">Cổng xác thực tập trung cho toàn hệ sinh thái</p>
+      <div class="client-badge" id="clientBadge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="m10 15 5-3-5-3v6z"/>
+        </svg>
+        <span id="clientName">Universal SSO</span>
+      </div>
+    </div>
+
+    <div class="tab-deck">
+      <button class="tab-btn active" id="tabLogin" onclick="switchMode('login')">Đăng nhập</button>
+      <button class="tab-btn" id="tabRegister" onclick="switchMode('register')">Tạo tài khoản</button>
+    </div>
+
+    <div class="banner error" id="alertError">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="12" y1="8" x2="12" y2="12"/>
+        <line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+      <span id="errorMessage">Thông tin xác thực không chính xác</span>
+    </div>
+
+    <div class="banner success" id="alertSuccess">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+        <polyline points="22 4 12 14.01 9 11.01"/>
+      </svg>
+      <span id="successMessage">Đăng nhập thành công! Đang chuyển hướng...</span>
+    </div>
+
+    <!-- Login Form -->
+    <form id="formLogin" onsubmit="handleLogin(event)">
+      <div class="form-group">
+        <label class="form-label" for="loginUser">Tên đăng nhập hoặc Email</label>
+        <div class="input-wrap">
+          <input class="form-input" id="loginUser" type="text" placeholder="username hoặc email@meikova.io" required autocomplete="username">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="loginPass">Mật khẩu</label>
+        <div class="input-wrap">
+          <input class="form-input" id="loginPass" type="password" placeholder="Tối thiểu 6 ký tự" required autocomplete="current-password">
+        </div>
+      </div>
+      <button class="btn-submit" id="btnLoginSubmit" type="submit">
+        <span>Xác nhận Đăng nhập</span>
+      </button>
+    </form>
+
+    <!-- Register Form -->
+    <form id="formRegister" class="hidden" onsubmit="handleRegister(event)">
+      <div class="form-group">
+        <label class="form-label" for="regUser">Tên đăng nhập</label>
+        <div class="input-wrap">
+          <input class="form-input" id="regUser" type="text" placeholder="Chỉ chứa chữ thường, số, dấu gạch dưới" required autocomplete="username">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="regEmail">Email (tùy chọn)</label>
+        <div class="input-wrap">
+          <input class="form-input" id="regEmail" type="email" placeholder="name@example.com" autocomplete="email">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="regName">Tên hiển thị</label>
+        <div class="input-wrap">
+          <input class="form-input" id="regName" type="text" placeholder="Ví dụ: Nguyễn Văn A">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="regPass">Mật khẩu</label>
+        <div class="input-wrap">
+          <input class="form-input" id="regPass" type="password" placeholder="Tối thiểu 6 ký tự" required autocomplete="new-password">
+        </div>
+      </div>
+      <button class="btn-submit" id="btnRegSubmit" type="submit">
+        <span>Tạo tài khoản Meikova ID</span>
+      </button>
+    </form>
+
+    <div class="divider">
+      <span>Hoặc tiếp tục với</span>
+    </div>
+
+    <div class="google-btn-wrap">
+      <div id="g_id_onload"
+           data-client_id="515668723869-066g74dbt8c3b61odfigv6gl3552coj3.apps.googleusercontent.com"
+           data-callback="handleGoogleCredential"
+           data-auto_prompt="false">
+      </div>
+      <div class="g_id_signin"
+           data-type="standard"
+           data-size="large"
+           data-theme="filled_black"
+           data-text="continue_with"
+           data-shape="pill"
+           data-logo_alignment="left"
+           data-width="320">
+      </div>
+    </div>
+
+    <div class="card-footer">
+      Mã hóa bất đối xứng Ed25519 &bull; Zero-Roundtrip SSO &bull; Turso Cloud
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const clientId = params.get('client_id') || params.get('app') || 'meikova-platform';
+    const targetOrigin = params.get('origin') || '*';
+    const redirectUri = params.get('redirect_uri') || '';
+    const initialMode = params.get('mode') || (window.location.pathname.includes('register') ? 'register' : 'login');
+
+    // Update Client Badge
+    const clientMap = {
+      'harvest': 'Meikova Harvest',
+      'meikova-harvest': 'Meikova Harvest',
+      'loop': 'Meikova Loop',
+      'meikova-loop': 'Meikova Loop',
+      'relay': 'Meikova Relay',
+      'meikova-relay': 'Meikova Relay'
+    };
+    if (clientMap[clientId]) {
+      document.getElementById('clientName').textContent = clientMap[clientId];
+    }
+
+    function switchMode(mode) {
+      const isLogin = mode === 'login';
+      document.getElementById('tabLogin').classList.toggle('active', isLogin);
+      document.getElementById('tabRegister').classList.toggle('active', !isLogin);
+      document.getElementById('formLogin').classList.toggle('hidden', !isLogin);
+      document.getElementById('formRegister').classList.toggle('hidden', isLogin);
+      hideAlerts();
+    }
+
+    function showError(msg) {
+      document.getElementById('errorMessage').textContent = msg;
+      document.getElementById('alertError').style.display = 'flex';
+      document.getElementById('alertSuccess').style.display = 'none';
+    }
+
+    function showSuccess(msg) {
+      document.getElementById('successMessage').textContent = msg;
+      document.getElementById('alertSuccess').style.display = 'flex';
+      document.getElementById('alertError').style.display = 'none';
+    }
+
+    function hideAlerts() {
+      document.getElementById('alertError').style.display = 'none';
+      document.getElementById('alertSuccess').style.display = 'none';
+    }
+
+    function dispatchAuthSuccess(authResult) {
+      showSuccess('Xác thực thành công. Đang đồng bộ phiên...');
+      const token = authResult.token;
+      const user = authResult.user;
+
+      // 1. PostMessage to Parent Window / Opener (for Popup SSO)
+      if (window.opener && !window.opener.closed) {
+        try {
+          window.opener.postMessage({
+            type: 'MEIKOVA_SSO_SUCCESS',
+            token: token,
+            user: user,
+            client_id: clientId
+          }, targetOrigin === '*' ? '*' : targetOrigin);
+        } catch (e) {
+          console.warn('postMessage failed:', e);
+        }
+        setTimeout(() => {
+          window.close();
+        }, 800);
+        return;
+      }
+
+      // 2. Redirect URL (for Desktop Callback or Direct Web Redirect)
+      if (redirectUri) {
+        const hash = `#token=${encodeURIComponent(token)}&user_id=${encodeURIComponent(user.id)}&username=${encodeURIComponent(user.username)}`;
+        window.location.href = redirectUri + hash;
+        return;
+      }
+
+      // 3. Standalone mode: Redirect to profile/me
+      setTimeout(() => {
+        window.location.href = '/api/auth/me';
+      }, 1000);
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      hideAlerts();
+      const btn = document.getElementById('btnLoginSubmit');
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spinner"></div><span>Đang kiểm thực...</span>';
+
+      const username = document.getElementById('loginUser').value.trim();
+      const password = document.getElementById('loginPass').value;
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        const data = await res.json();
+        if (!res.ok || data.status !== 'ok') {
+          showError(data.detail || data.message || 'Tên đăng nhập hoặc mật khẩu không chính xác.');
+          btn.disabled = false;
+          btn.innerHTML = '<span>Xác nhận Đăng nhập</span>';
+          return;
+        }
+        dispatchAuthSuccess(data);
+      } catch (err) {
+        showError('Không thể kết nối Cổng xác thực. Vui lòng thử lại.');
+        btn.disabled = false;
+        btn.innerHTML = '<span>Xác nhận Đăng nhập</span>';
+      }
+    }
+
+    async function handleRegister(e) {
+      e.preventDefault();
+      hideAlerts();
+      const btn = document.getElementById('btnRegSubmit');
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spinner"></div><span>Đang tạo tài khoản...</span>';
+
+      const username = document.getElementById('regUser').value.trim();
+      const email = document.getElementById('regEmail').value.trim() || null;
+      const display_name = document.getElementById('regName').value.trim() || null;
+      const password = document.getElementById('regPass').value;
+
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password, email, display_name })
+        });
+        const data = await res.json();
+        if (!res.ok || data.status !== 'ok') {
+          showError(data.detail || data.message || 'Không thể tạo tài khoản.');
+          btn.disabled = false;
+          btn.innerHTML = '<span>Tạo tài khoản Meikova ID</span>';
+          return;
+        }
+        dispatchAuthSuccess(data);
+      } catch (err) {
+        showError('Không thể kết nối Cổng xác thực. Vui lòng thử lại.');
+        btn.disabled = false;
+        btn.innerHTML = '<span>Tạo tài khoản Meikova ID</span>';
+      }
+    }
+
+    async function handleGoogleCredential(response) {
+      hideAlerts();
+      if (!response.credential) {
+        showError('Google token không hợp lệ.');
+        return;
+      }
+      try {
+        const res = await fetch('/api/auth/google', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ credential: response.credential })
+        });
+        const data = await res.json();
+        if (!res.ok || data.status !== 'ok') {
+          showError(data.detail || 'Xác thực Google thất bại.');
+          return;
+        }
+        dispatchAuthSuccess(data);
+      } catch (err) {
+        showError('Lỗi kết nối tới máy chủ xác thực Google.');
+      }
+    }
+
+    // Initialize mode
+    switchMode(initialMode);
+  </script>
+</body>
+</html>
