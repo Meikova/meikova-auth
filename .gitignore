@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+env/
+venv/
+ENV/
+
+# Local databases
+data/*.db
+data/*.db-wal
+data/*.db-shm
+*.db
+
+# Environment Secrets
+.env
+.env.local
+
+# Private Keys
+keys/*private*.pem
+*private*.pem
+*.key
+
+# Logs
+*.log

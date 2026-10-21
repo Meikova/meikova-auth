@@ -1,0 +1,25 @@
+# Render Blueprint Specification for Meikova Auth Gateway
+# Deploy to Render via Blueprint (1-Click) or Web Service Dashboard
+services:
+  - type: web
+    name: meikova-auth
+    runtime: python
+    region: singapore
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: AUTH_TURSO_DATABASE_URL
+        value: https://meikova-auth-m3ik18dp.aws-ap-northeast-1.turso.io
+      - key: AUTH_TURSO_AUTH_TOKEN
+        sync: false
+      - key: AUTH_PRIVATE_KEY_PEM
+        sync: false
+      - key: AUTH_PUBLIC_KEY_PEM
+        sync: false
