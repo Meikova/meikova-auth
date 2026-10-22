@@ -122,6 +122,12 @@ function verifySsoToken(token, publicKeyPem) {
 
 ---
 
+## Documentation & Guides
+
+- [Google OAuth Credentials Setup Guide](docs/GOOGLE-CREDENTIALS-GUIDE.md) - Step-by-step instructions for Google Cloud Console OAuth 2.0 configuration, consent screen, authorized origins, and GIS integration.
+
+---
+
 ## Deployment to Render Cloud
 
 ### Blueprint Deployment (Recommended)
