@@ -131,9 +131,9 @@ def run_tests():
 
     # 3. Registration (Centralized)
     ts = int(time.time())
-    test_username = f"titan_test_{ts}"
-    test_email = f"titan_{ts}@meikova.io"
-    test_password = "TitanSecretPassword123"
+    test_username = f"meikova_test_{ts}"
+    test_email = f"meikova_{ts}@meikova.io"
+    test_password = "MeikovaSecretPassword123"
 
     reg_payload = {
         "username": test_username,
