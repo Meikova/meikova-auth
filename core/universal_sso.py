@@ -55,6 +55,25 @@ class UniversalSSO:
         self.private_key_pem = env_priv or (priv_path.read_text(encoding="utf-8") if priv_path.exists() else None)
         self.public_key_pem = env_pub or (pub_path.read_text(encoding="utf-8") if pub_path.exists() else None)
 
+        # 3. Fallback for CI/testing/fresh-clone: Auto-generate in-memory Ed25519 key pair if private key absent
+        if not self.private_key_pem:
+            try:
+                from cryptography.hazmat.primitives.asymmetric import ed25519
+                from cryptography.hazmat.primitives import serialization
+                temp_key = ed25519.Ed25519PrivateKey.generate()
+                self.private_key_pem = temp_key.private_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PrivateFormat.PKCS8,
+                    encryption_algorithm=serialization.NoEncryption()
+                ).decode("utf-8")
+                # When private key is ephemeral, public key must match it
+                self.public_key_pem = temp_key.public_key().public_bytes(
+                    encoding=serialization.Encoding.PEM,
+                    format=serialization.PublicFormat.SubjectPublicKeyInfo
+                ).decode("utf-8")
+            except Exception as e:
+                print(f"[UniversalSSO Warning] Could not generate ephemeral Ed25519 key: {e}")
+
     def issue_token(
         self,
         user_id: str,

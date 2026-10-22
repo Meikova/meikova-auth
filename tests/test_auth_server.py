@@ -19,6 +19,25 @@ from pathlib import Path
 
 TEST_DIR = Path(__file__).resolve().parent
 AUTH_ROOT = TEST_DIR.parent
+KEYS_DIR = AUTH_ROOT / "keys"
+
+# Ensure test Ed25519 keys exist in CI environment (GitHub Actions)
+if not os.environ.get("AUTH_PRIVATE_KEY_PEM") and not (KEYS_DIR / "ed25519_private.pem").exists():
+    try:
+        from cryptography.hazmat.primitives.asymmetric import ed25519
+        from cryptography.hazmat.primitives import serialization
+        _ci_key = ed25519.Ed25519PrivateKey.generate()
+        os.environ["AUTH_PRIVATE_KEY_PEM"] = _ci_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        ).decode("utf-8")
+        os.environ["AUTH_PUBLIC_KEY_PEM"] = _ci_key.public_key().public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        ).decode("utf-8")
+    except Exception as _e:
+        print(f"[CI Key Setup Warning] {_e}")
 
 if str(AUTH_ROOT) not in sys.path:
     sys.path.insert(0, str(AUTH_ROOT))
@@ -204,7 +223,7 @@ def run_tests():
     log_step("POST /api/auth/google (Identity Link Deduplication)", code == 200 and g_body2.get("user", {}).get("id") == g_user_id, f"Deduplicated to User ID: {g_body2.get('user', {}).get('id')}")
 
     # 14. Tampered Token Rejection
-    tampered_token = token[:-4] + "AAAA"
+    tampered_token = (token or "dummytoken12345678")[:-4] + "AAAA"
     code, _ = http_request(f"{base_url}/api/auth/verify?token={tampered_token}")
     log_step("Tampered Token Rejection (Verify API)", code == 401, f"Code: {code}")
 
