@@ -33,7 +33,7 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from core.auth_gateway import AuthGateway, gateway_instance
+from core.auth_gateway import AuthGateway, gateway_instance, get_google_client_id
 from core.universal_sso import verify_universal_token, issue_universal_token
 
 app = FastAPI(
@@ -101,7 +101,18 @@ def root_info():
             "verify": "GET|POST /api/auth/verify",
             "keys": "GET /api/auth/keys",
             "jwks": "GET /.well-known/jwks.json",
+            "config": "GET /api/auth/config",
         }
+    }
+
+
+@app.get("/api/auth/config")
+def get_auth_config():
+    return {
+        "status": "online",
+        "google_client_id": get_google_client_id(),
+        "sso_portal": "/login",
+        "version": "1.0.0",
     }
 
 

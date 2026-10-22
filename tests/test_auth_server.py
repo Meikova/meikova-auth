@@ -148,6 +148,10 @@ def run_tests():
     code, body = http_request(f"{base_url}/.well-known/jwks.json")
     log_step("GET /.well-known/jwks.json", code == 200 and "keys" in body, f"Keys: {len(body.get('keys', []))}")
 
+    # 2.1 Auth Config
+    code, body = http_request(f"{base_url}/api/auth/config")
+    log_step("GET /api/auth/config", code == 200 and "515668723869" in body.get("google_client_id", ""), f"Google Client ID: {body.get('google_client_id')}")
+
     # 3. Registration (Centralized)
     ts = int(time.time())
     test_username = f"meikova_test_{ts}"

@@ -17,6 +17,8 @@ data/*.db-shm
 # Environment Secrets
 .env
 .env.local
+client_secret*.json
+*.secret.json
 
 # Private Keys
 keys/*private*.pem

@@ -46,6 +46,42 @@ AUTH_TURSO_TOKEN = os.environ.get(
 LOCAL_AUTH_DB = DATA_DIR / "meikova_auth_local.db"
 
 
+def get_google_client_id() -> str:
+    """3-Tier Fallback: 1. os.environ -> 2. client_secret.json -> 3. Standard SSOT default."""
+    env_id = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+    if env_id:
+        return env_id
+    secret_file = AUTH_ROOT / "client_secret.json"
+    if secret_file.exists():
+        try:
+            data = json.loads(secret_file.read_text(encoding="utf-8"))
+            web = data.get("web") or data.get("installed") or {}
+            cid = web.get("client_id", "").strip()
+            if cid:
+                return cid
+        except Exception:
+            pass
+    return "515668723869-5g65hqgjvubafrqjcgdlb4jbsjcbe531.apps.googleusercontent.com"
+
+
+def get_google_client_secret() -> str:
+    """3-Tier Fallback: 1. os.environ -> 2. client_secret.json -> 3. Empty."""
+    env_sec = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
+    if env_sec:
+        return env_sec
+    secret_file = AUTH_ROOT / "client_secret.json"
+    if secret_file.exists():
+        try:
+            data = json.loads(secret_file.read_text(encoding="utf-8"))
+            web = data.get("web") or data.get("installed") or {}
+            sec = web.get("client_secret", "").strip()
+            if sec:
+                return sec
+        except Exception:
+            pass
+    return ""
+
+
 class AuthGateway:
     def __init__(self, turso_url: str = AUTH_TURSO_URL, turso_token: str = AUTH_TURSO_TOKEN, local_db_path: Path = LOCAL_AUTH_DB):
         self.turso_url = turso_url
