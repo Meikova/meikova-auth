@@ -1,0 +1,21 @@
+{
+  "name": "meikova-auth",
+  "version": "1.0.0",
+  "description": "Meikova Auth Gateway & Universal Credential Management Dashboard",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "start": "python server.py",
+    "desktop": "python meikova_auth_desktop.py",
+    "test": "python tests/test_auth_server.py"
+  },
+  "keywords": [
+    "meikova",
+    "auth",
+    "sso",
+    "credentials",
+    "identity",
+    "ed25519"
+  ],
+  "author": "Meikova Platform"
+}

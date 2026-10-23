@@ -1,10 +1,12 @@
-# Hướng Dẫn Tạo Google OAuth Credentials Cho Cổng Xác Thực Meikova ID
+# Hướng Dẫn Tạo Google OAuth Credentials Cho Cổng Xác Thực Meikova Auth
+
+Dùng tên hiển thị **Meikova Auth** và logo Identity Gateway riêng khi cấu hình OAuth consent screen. Không dùng logo Meikova Shield. Tài sản cục bộ: `static/logo.svg`; xem [BRAND.md](BRAND.md). Cập nhật tài liệu không tự đổi cấu hình trong Google Cloud Console.
 
 Tài liệu hướng dẫn chi tiết từng bước tạo thông tin xác thực Google OAuth 2.0 (Client ID & Client Secret) trên Google Cloud Console cho hệ thống Meikova Auth Gateway (`meikova-auth`).
 
 ---
 
-## 1. Kiến Trúc Hoạt Động Của Google OAuth Trong Meikova ID
+## 1. Kiến Trúc Hoạt Động Của Google OAuth Trong Meikova Auth
 
 ```mermaid
 sequenceDiagram
@@ -36,7 +38,7 @@ sequenceDiagram
 2. Đăng nhập bằng tài khoản Google quản trị của bạn.
 3. Ở thanh menu trên cùng, bấm vào danh sách chọn dự án (Project dropdown) -> Chọn **New Project** (Dự án mới).
 4. Điền thông tin dự án:
-   - **Project name:** `Meikova Ecosystem` (hoặc `Meikova ID`).
+   - **Project name:** `Meikova Ecosystem` (hoặc `Meikova Auth`).
    - **Organization:** Để mặc định `No organization` (hoặc tổ chức của bạn nếu có).
 5. Bấm **CREATE** (Tạo) và chờ vài giây để Google khởi tạo dự án.
 6. Sau khi tạo xong, bấm vào thông báo góc phải để chuyển sang làm việc trên dự án vừa tạo.
@@ -52,7 +54,7 @@ Trước khi tạo Client ID, Google bắt buộc phải cấu hình màn hình 
    - Chọn **External** (Bên ngoài) để cho phép bất kỳ tài khoản Google nào cũng có thể đăng nhập được.
    - Bấm **CREATE**.
 3. Điền **App information** (Thông tin ứng dụng):
-   - **App name:** `Meikova ID`
+   - **App name:** `Meikova Auth`
    - **User support email:** Chọn email của bạn trong danh sách xổ xuống.
    - **App logo (Tùy chọn):** Tải lên logo Meikova (120x120px) nếu muốn.
    - **Application home page:** `https://meikova-auth.onrender.com`
@@ -161,7 +163,7 @@ GOOGLE_CLIENT_SECRET=YOUR_CLIENT_SECRET
 - **Nguyên nhân:** Địa chỉ URL trên thanh trình duyệt (Origin) chưa được khai báo trong danh sách *Authorized JavaScript origins*.
 - **Cách sửa:** Copy chính xác giao thức + domain + port (ví dụ: `http://localhost:8990` - không có dấu gạch chéo `/` ở cuối) và thêm vào danh sách *Authorized JavaScript origins* trên Google Console. Chờ 2 - 5 phút để hệ thống Google đồng bộ.
 
-### 2. Lỗi `Access blocked: Meikova ID has not completed the Google verification process`
+### 2. Lỗi `Access blocked: Meikova Auth has not completed the Google verification process`
 - **Nguyên nhân:** Dự án đang ở chế độ `Testing`, và tài khoản Google đang đăng nhập chưa được cấp quyền thử nghiệm.
 - **Cách sửa:** Vào trang *OAuth consent screen* -> Mục *Test users* -> Thêm email cần đăng nhập vào danh sách. Hoặc bấm *Publish App* để mở quyền truy cập công khai.
 

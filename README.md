@@ -6,6 +6,10 @@ Designed with zero external service dependencies for verification, leveraging as
 
 ---
 
+## Brand identity
+
+Dedicated **Meikova Auth — Identity Gateway** logo, distinct from Shield. See [brand integration and offline checks](docs/BRAND.md).
+
 ## Architecture Highlights
 
 ```mermaid

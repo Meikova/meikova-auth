@@ -1,0 +1,21 @@
+{
+  "id": "auth",
+  "name": "Meikova Auth",
+  "project_path": "meikova-auth",
+  "color": "#A6C5FF",
+  "geometry_sha256": "ac68bbee276151ac44592a370e1ae564fffaa57c424d4f1bd8438fe1ffed4791",
+  "distinct_from_shield_sha256": "f552302d1705e296c1fe76112832788ffaa3e12618d2ca3c20c093bc99d1f594",
+  "files": {
+    "apple-touch-icon.png": "efa31276120c70f19367daf5b8de6e934814cc473bac59c3d034cb5d766d2a35",
+    "favicon-16.png": "73db630a84a463b176cfa0ec607666315673e591f5c9d9df4bf32bdd0e98aba0",
+    "favicon-32.png": "ba535fbc60605f00cf55c841988371a10230760c190a07f38b487a97474680dd",
+    "favicon-48.png": "14e0dc658bc085a6d6c51742e23bcafe450f48edfbc5853586660ec98370dc47",
+    "favicon.ico": "31d581206a8e365c643d1ab346cccbdfd630eadd91b46d0cf44d74cf8d7d5203",
+    "favicon.svg": "e5a0a53891a97732d0210ebf23bd789ba7b56dfdadc7033515a6bb88254c97e0",
+    "icon-any-192.png": "4a0d7a906fee7819c0126b2d86653b377b9fdb256a4ac69f102cee7047af398c",
+    "icon-any-512.png": "8186751e50037ee0cef031a2f908e546a94fb74e75170ab8b105b78dfe2b7b67",
+    "icon-maskable-192.png": "41fd403c20655c3db7a611697c054a8eb72fd7d2d3b470e4f91dace367f61584",
+    "icon-maskable-512.png": "09acc6afc3e7dcfadef902eee7db1d68f087a850cfe98af2c9403f820c54c685",
+    "logo.svg": "48080d53d9f035ba10b4d25ebfd026845b7577d84d11c4faf42faaedb5e6f41f"
+  }
+}

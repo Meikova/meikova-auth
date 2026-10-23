@@ -4,9 +4,13 @@ Meikova Auth Gateway — Core Database & Authentication Layer
 Supports:
 - Turso Cloud SQLite (`meikova-auth`) over encrypted HTTPS/libSQL pipeline.
 - Local SQLite WAL fallback at `data/meikova_auth_local.db` when offline.
-- PBKDF2-SHA256 password hashing (100,000 iterations).
+- PBKDF2-SHA256 password hashing (600,000 iterations according to OWASP / Meikova standard, with 100k legacy verification).
 - 1-Click Google OAuth Identity linking and auto-provisioning.
 - RFC 8037 standard JWKS export for zero-roundtrip offline verification.
+- Active Sessions & Device telemetry tracking and revocation.
+- Personal Access Tokens (PAT) / API Key management.
+- Dynamic Host Discovery (Tailscale IP, LAN IP, Active URL) according to Rule 18.
+- Dynamic Release Asset Resolver according to Rule 15.
 """
 
 import os
@@ -146,6 +150,31 @@ class AuthGateway:
                     PRIMARY KEY (user_id, app_id),
                     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
                 );
+
+                CREATE TABLE IF NOT EXISTS personal_access_tokens (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    token_hash TEXT NOT NULL,
+                    token_prefix TEXT NOT NULL,
+                    scopes TEXT DEFAULT 'read,write',
+                    created_at INTEGER NOT NULL,
+                    expires_at INTEGER NOT NULL,
+                    revoked_at INTEGER,
+                    last_used_at INTEGER,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS audit_logs (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    ip_address TEXT,
+                    user_agent TEXT,
+                    details TEXT,
+                    created_at INTEGER NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                );
             """)
             conn.commit()
         finally:
@@ -197,12 +226,33 @@ class AuthGateway:
         return default
 
     @staticmethod
-    def hash_password(password: str, salt: str) -> str:
+    def hash_password(password: str, salt: str, iterations: int = 600_000) -> str:
         pwd_bytes = password.encode("utf-8")
         salt_bytes = bytes.fromhex(salt)
-        return hashlib.pbkdf2_hmac("sha256", pwd_bytes, salt_bytes, 100_000).hex()
+        return hashlib.pbkdf2_hmac("sha256", pwd_bytes, salt_bytes, iterations).hex()
 
-    def register(self, username: str, password: str, email: Optional[str] = None, display_name: Optional[str] = None) -> Dict[str, Any]:
+    @staticmethod
+    def verify_password_hash(password: str, salt: str, stored_hash: str) -> bool:
+        if not stored_hash or not salt:
+            return False
+        # 1. Standard 600,000 iterations (OWASP 2023 / Meikova standard)
+        calc_600k = AuthGateway.hash_password(password, salt, 600_000)
+        if secrets.compare_digest(stored_hash, calc_600k):
+            return True
+        # 2. Legacy 100,000 iterations backward-compatibility
+        calc_100k = AuthGateway.hash_password(password, salt, 100_000)
+        return secrets.compare_digest(stored_hash, calc_100k)
+
+    def register(
+        self,
+        username: str,
+        password: str,
+        email: Optional[str] = None,
+        display_name: Optional[str] = None,
+        device_name: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        ip_address: Optional[str] = None
+    ) -> Dict[str, Any]:
         clean_user = str(username or "").strip().lower()
         if not clean_user or len(clean_user) < 3:
             raise ValueError("Tên đăng nhập phải có ít nhất 3 ký tự.")
@@ -221,13 +271,21 @@ class AuthGateway:
 
         user_id = f"usr_{uuid.uuid4().hex[:16]}"
         salt = secrets.token_hex(16)
-        pwd_hash = self.hash_password(password, salt)
+        pwd_hash = self.hash_password(password, salt, 600_000)
         now = int(time.time())
 
         self.execute(
             "INSERT INTO users (id, email, username, password_hash, salt, display_name, role, status, created_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, 'user', 'active', ?, ?)",
             (user_id, clean_email, clean_user, pwd_hash, salt, clean_name, now, now)
+        )
+
+        session_id = self.create_session(
+            user_id=user_id,
+            device_name=device_name or "Trình duyệt Web",
+            device_type="web",
+            user_agent=user_agent,
+            ip_address=ip_address
         )
 
         sso_token = issue_universal_token(
@@ -238,9 +296,12 @@ class AuthGateway:
             role="user"
         )
 
+        self.log_audit(user_id, "AUTH_REGISTER", ip_address=ip_address, user_agent=user_agent)
+
         return {
             "status": "ok",
             "token": sso_token,
+            "session_id": session_id,
             "user": {
                 "id": user_id,
                 "username": clean_user,
@@ -250,7 +311,15 @@ class AuthGateway:
             }
         }
 
-    def authenticate(self, identifier: str, password: str) -> Optional[Dict[str, Any]]:
+    def authenticate(
+        self,
+        identifier: str,
+        password: str,
+        device_name: Optional[str] = None,
+        device_type: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        ip_address: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
         clean_id = str(identifier or "").strip().lower()
         if not clean_id or not password:
             return None
@@ -271,9 +340,16 @@ class AuthGateway:
         salt = self._row_val(row, "salt", 5)
         role = self._row_val(row, "role", 6) or "user"
 
-        calc_hash = self.hash_password(password, salt)
-        if not secrets.compare_digest(expected_hash, calc_hash):
+        if not self.verify_password_hash(password, salt, expected_hash):
             return None
+
+        session_id = self.create_session(
+            user_id=user_id,
+            device_name=device_name or "Trình duyệt Web",
+            device_type=device_type or "web",
+            user_agent=user_agent,
+            ip_address=ip_address
+        )
 
         sso_token = issue_universal_token(
             user_id=user_id,
@@ -283,9 +359,12 @@ class AuthGateway:
             role=role
         )
 
+        self.log_audit(user_id, "AUTH_LOGIN", ip_address=ip_address, user_agent=user_agent, details={"session_id": session_id})
+
         return {
             "status": "ok",
             "token": sso_token,
+            "session_id": session_id,
             "user": {
                 "id": user_id,
                 "username": username,
@@ -311,6 +390,375 @@ class AuthGateway:
             "role": self._row_val(row, "role", 5) or "user",
             "status": self._row_val(row, "status", 6) or "active",
             "created_at": self._row_val(row, "created_at", 7),
+        }
+
+    def update_profile(self, user_id: str, display_name: Optional[str] = None, email: Optional[str] = None) -> Dict[str, Any]:
+        user = self.get_user_by_id(user_id)
+        if not user:
+            raise ValueError("Không tìm thấy người dùng.")
+
+        clean_name = str(display_name).strip() if display_name is not None else user.get("display_name")
+        clean_email = str(email).strip().lower() if email is not None else user.get("email")
+
+        if clean_email and clean_email != (user.get("email") or "").lower():
+            existing = self.fetchone(
+                "SELECT id FROM users WHERE LOWER(email) = ? AND id != ?",
+                (clean_email, user_id)
+            )
+            if existing:
+                raise ValueError("Email này đã được sử dụng bởi tài khoản khác.")
+
+        now = int(time.time())
+        self.execute(
+            "UPDATE users SET display_name = ?, email = ?, updated_at = ? WHERE id = ?",
+            (clean_name, clean_email, now, user_id)
+        )
+        self.log_audit(user_id, "AUTH_PROFILE_UPDATE", details={"display_name": clean_name, "email": clean_email})
+        return self.get_user_by_id(user_id)
+
+    def change_password(
+        self,
+        user_id: str,
+        old_password: str,
+        new_password: str,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None
+    ) -> bool:
+        row = self.fetchone("SELECT id, password_hash, salt FROM users WHERE id = ?", (user_id,))
+        if not row:
+            raise ValueError("Không tìm thấy người dùng.")
+
+        stored_hash = self._row_val(row, "password_hash", 1)
+        salt = self._row_val(row, "salt", 2)
+
+        if not stored_hash or not salt:
+            raise ValueError("Tài khoản chưa thiết lập mật khẩu (đăng nhập qua Google).")
+
+        if not self.verify_password_hash(old_password, salt, stored_hash):
+            raise ValueError("Mật khẩu hiện tại không chính xác.")
+
+        clean_new = str(new_password or "").strip()
+        if len(clean_new) < 6:
+            raise ValueError("Mật khẩu mới phải có tối thiểu 6 ký tự.")
+
+        new_salt = secrets.token_hex(16)
+        new_hash = self.hash_password(clean_new, new_salt, 600_000)
+        now = int(time.time())
+
+        self.execute(
+            "UPDATE users SET password_hash = ?, salt = ?, updated_at = ? WHERE id = ?",
+            (new_hash, new_salt, now, user_id)
+        )
+        self.log_audit(user_id, "AUTH_PASSWORD_CHANGE", ip_address=ip_address, user_agent=user_agent)
+        return True
+
+    def create_session(
+        self,
+        user_id: str,
+        device_name: Optional[str] = None,
+        device_type: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        ttl_days: int = 30
+    ) -> str:
+        session_id = f"sess_{uuid.uuid4().hex[:16]}"
+        now = int(time.time())
+        expires_at = now + (ttl_days * 86400)
+        d_name = device_name or "Thiết bị không xác định"
+        d_type = device_type or "web"
+        u_agent = (user_agent or "")[:255]
+        ip = (ip_address or "127.0.0.1")[:45]
+
+        self.execute(
+            "INSERT INTO sessions (id, user_id, device_name, device_type, user_agent, ip_address, created_at, expires_at, revoked_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)",
+            (session_id, user_id, d_name, d_type, u_agent, ip, now, expires_at)
+        )
+        return session_id
+
+    def get_sessions(self, user_id: str) -> List[Dict[str, Any]]:
+        now = int(time.time())
+        rows = self.execute(
+            "SELECT id, device_name, device_type, user_agent, ip_address, created_at, expires_at, revoked_at "
+            "FROM sessions WHERE user_id = ? AND (revoked_at IS NULL OR revoked_at = 0) AND expires_at > ? "
+            "ORDER BY created_at DESC",
+            (user_id, now)
+        )
+        sessions = []
+        for r in (rows or []):
+            sessions.append({
+                "id": self._row_val(r, "id", 0),
+                "device_name": self._row_val(r, "device_name", 1) or "Thiết bị",
+                "device_type": self._row_val(r, "device_type", 2) or "web",
+                "user_agent": self._row_val(r, "user_agent", 3) or "",
+                "ip_address": self._row_val(r, "ip_address", 4) or "127.0.0.1",
+                "created_at": self._row_val(r, "created_at", 5),
+                "expires_at": self._row_val(r, "expires_at", 6),
+            })
+        return sessions
+
+    def revoke_session(self, user_id: str, session_id: str) -> bool:
+        now = int(time.time())
+        self.execute(
+            "UPDATE sessions SET revoked_at = ? WHERE id = ? AND user_id = ?",
+            (now, session_id, user_id)
+        )
+        self.log_audit(user_id, "AUTH_SESSION_REVOKE", details={"session_id": session_id})
+        return True
+
+    def revoke_other_sessions(self, user_id: str, keep_session_id: Optional[str] = None) -> bool:
+        now = int(time.time())
+        if keep_session_id:
+            self.execute(
+                "UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND id != ? AND (revoked_at IS NULL OR revoked_at = 0)",
+                (now, user_id, keep_session_id)
+            )
+        else:
+            self.execute(
+                "UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND (revoked_at IS NULL OR revoked_at = 0)",
+                (now, user_id)
+            )
+        self.log_audit(user_id, "AUTH_REVOKE_OTHER_SESSIONS", details={"kept_session": keep_session_id})
+        return True
+
+    def get_identities(self, user_id: str) -> List[Dict[str, Any]]:
+        rows = self.execute(
+            "SELECT id, provider, provider_user_id, email, created_at FROM identities WHERE user_id = ? ORDER BY created_at ASC",
+            (user_id,)
+        )
+        identities = []
+        for r in (rows or []):
+            identities.append({
+                "id": self._row_val(r, "id", 0),
+                "provider": self._row_val(r, "provider", 1),
+                "provider_user_id": self._row_val(r, "provider_user_id", 2),
+                "email": self._row_val(r, "email", 3),
+                "created_at": self._row_val(r, "created_at", 4),
+            })
+        return identities
+
+    def get_authorized_apps(self, user_id: str) -> List[Dict[str, Any]]:
+        rows = self.execute("SELECT app_id, scopes, authorized_at FROM app_authorizations WHERE user_id = ?", (user_id,))
+        auth_map = {}
+        for r in (rows or []):
+            aid = self._row_val(r, "app_id", 0)
+            auth_map[aid] = {
+                "scopes": self._row_val(r, "scopes", 1) or "sso:login",
+                "authorized_at": self._row_val(r, "authorized_at", 2)
+            }
+
+        catalog = [
+            {
+                "id": "meikova-loop",
+                "name": "Meikova Loop",
+                "category": "Audio & DJ Streamer",
+                "description": "Nền tảng hòa âm vô tận & stream âm thanh studio chất lượng cao",
+                "color": "#FF8A50",
+                "status": "connected" if "meikova-loop" in auth_map else "ready",
+                "scopes": auth_map.get("meikova-loop", {}).get("scopes", "sso:profile,sso:sync"),
+                "authorized_at": auth_map.get("meikova-loop", {}).get("authorized_at")
+            },
+            {
+                "id": "meikova-harvest",
+                "name": "Meikova Harvest",
+                "category": "Media Extraction & Transcoding",
+                "description": "Hạ tầng trích xuất đa phương tiện, tách stem Demucs và stream HLS",
+                "color": "#00E5FF",
+                "status": "connected" if "meikova-harvest" in auth_map else "ready",
+                "scopes": auth_map.get("meikova-harvest", {}).get("scopes", "sso:profile,sso:download"),
+                "authorized_at": auth_map.get("meikova-harvest", {}).get("authorized_at")
+            },
+            {
+                "id": "meikova-relay",
+                "name": "Meikova Relay",
+                "category": "WebSocket Mesh & Remote Host",
+                "description": "Điều khiển máy trạm từ xa, đồng bộ màn hình 60fps và DNS bypass",
+                "color": "#22C55E",
+                "status": "connected" if "meikova-relay" in auth_map else "ready",
+                "scopes": auth_map.get("meikova-relay", {}).get("scopes", "sso:profile,sso:relay"),
+                "authorized_at": auth_map.get("meikova-relay", {}).get("authorized_at")
+            }
+        ]
+        return catalog
+
+    def create_pat(self, user_id: str, name: str, scopes: str = "read,write", ttl_days: int = 90) -> Dict[str, Any]:
+        clean_name = str(name or "Personal Access Token").strip()
+        pat_id = f"pat_{uuid.uuid4().hex[:16]}"
+        secret_rand = secrets.token_urlsafe(32)
+        full_token = f"mkv_pat_{pat_id[4:]}_{secret_rand}"
+        prefix = full_token[:16] + "..."
+        token_hash = hashlib.sha256(full_token.encode("utf-8")).hexdigest()
+
+        now = int(time.time())
+        expires_at = now + (ttl_days * 86400)
+
+        self.execute(
+            "INSERT INTO personal_access_tokens (id, user_id, name, token_hash, token_prefix, scopes, created_at, expires_at, revoked_at, last_used_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)",
+            (pat_id, user_id, clean_name, token_hash, prefix, scopes, now, expires_at)
+        )
+        self.log_audit(user_id, "AUTH_TOKEN_CREATE", details={"pat_id": pat_id, "name": clean_name, "scopes": scopes})
+
+        return {
+            "id": pat_id,
+            "name": clean_name,
+            "token": full_token,
+            "prefix": prefix,
+            "scopes": scopes,
+            "created_at": now,
+            "expires_at": expires_at
+        }
+
+    def get_pats(self, user_id: str) -> List[Dict[str, Any]]:
+        now = int(time.time())
+        rows = self.execute(
+            "SELECT id, name, token_prefix, scopes, created_at, expires_at, revoked_at, last_used_at "
+            "FROM personal_access_tokens WHERE user_id = ? AND (revoked_at IS NULL OR revoked_at = 0) "
+            "ORDER BY created_at DESC",
+            (user_id,)
+        )
+        tokens = []
+        for r in (rows or []):
+            tokens.append({
+                "id": self._row_val(r, "id", 0),
+                "name": self._row_val(r, "name", 1),
+                "prefix": self._row_val(r, "token_prefix", 2),
+                "scopes": self._row_val(r, "scopes", 3),
+                "created_at": self._row_val(r, "created_at", 4),
+                "expires_at": self._row_val(r, "expires_at", 5),
+                "is_expired": (self._row_val(r, "expires_at", 5) or 0) < now,
+                "last_used_at": self._row_val(r, "last_used_at", 7),
+            })
+        return tokens
+
+    def revoke_pat(self, user_id: str, pat_id: str) -> bool:
+        now = int(time.time())
+        self.execute(
+            "UPDATE personal_access_tokens SET revoked_at = ? WHERE id = ? AND user_id = ?",
+            (now, pat_id, user_id)
+        )
+        self.log_audit(user_id, "AUTH_TOKEN_REVOKE", details={"pat_id": pat_id})
+        return True
+
+    def log_audit(self, user_id: str, action: str, ip_address: Optional[str] = None, user_agent: Optional[str] = None, details: Optional[Dict[str, Any]] = None):
+        audit_id = f"aud_{uuid.uuid4().hex[:16]}"
+        now = int(time.time())
+        det_str = json.dumps(details or {}, ensure_ascii=False)
+        ip = (ip_address or "127.0.0.1")[:45]
+        ua = (user_agent or "")[:255]
+        try:
+            self.execute(
+                "INSERT INTO audit_logs (id, user_id, action, ip_address, user_agent, details, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (audit_id, user_id, action, ip, ua, det_str, now)
+            )
+        except Exception as e:
+            print(f"[Audit Log Error] {e}")
+
+    def get_audit_logs(self, user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+        rows = self.execute(
+            "SELECT id, action, ip_address, user_agent, details, created_at "
+            "FROM audit_logs WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
+            (user_id, limit)
+        )
+        logs = []
+        for r in (rows or []):
+            det = {}
+            try:
+                raw_det = self._row_val(r, "details", 4)
+                if raw_det:
+                    det = json.loads(raw_det)
+            except Exception:
+                pass
+            logs.append({
+                "id": self._row_val(r, "id", 0),
+                "action": self._row_val(r, "action", 1),
+                "ip_address": self._row_val(r, "ip_address", 2),
+                "user_agent": self._row_val(r, "user_agent", 3),
+                "details": det,
+                "created_at": self._row_val(r, "created_at", 5),
+            })
+        return logs
+
+    @staticmethod
+    def get_host_info(request_host: Optional[str] = None, port: int = 8990) -> Dict[str, Any]:
+        lan_ip = "127.0.0.1"
+        tailscale_ip = None
+        try:
+            import socket
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.connect(("8.8.8.8", 80))
+                lan_ip = s.getsockname()[0]
+        except Exception:
+            pass
+
+        try:
+            import socket
+            hostname = socket.gethostname()
+            for ip in socket.gethostbyname_ex(hostname)[2]:
+                if ip.startswith("100."):
+                    tailscale_ip = ip
+                    break
+        except Exception:
+            pass
+
+        public_url = os.environ.get("RENDER_EXTERNAL_URL") or os.environ.get("PUBLIC_URL")
+        if not public_url and request_host:
+            scheme = "https" if ("443" in request_host or "onrender.com" in request_host or "hf.space" in request_host) else "http"
+            public_url = f"{scheme}://{request_host}"
+
+        active_url = public_url or (f"http://{tailscale_ip}:{port}" if tailscale_ip else f"http://{lan_ip}:{port}")
+        is_local = "127.0.0.1" in active_url or "localhost" in active_url
+
+        return {
+            "status": "online",
+            "lan_ip": lan_ip,
+            "lan_url": f"http://{lan_ip}:{port}",
+            "tailscale_ip": tailscale_ip,
+            "tailscale_url": f"http://{tailscale_ip}:{port}" if tailscale_ip else None,
+            "active_url": active_url,
+            "is_local": is_local,
+            "port": port
+        }
+
+    @staticmethod
+    def resolve_app_asset(platform: str) -> Dict[str, Any]:
+        repo = "https://github.com/meikova/meikova-auth"
+        base_release = f"{repo}/releases/latest/download"
+        platforms = {
+            "windows": {
+                "unversioned_filename": "MeikovaAuth-Setup.exe",
+                "download_url": f"{base_release}/MeikovaAuth-Setup.exe",
+                "type": "Installer (.exe)",
+                "os": "Windows 10 / 11 (64-bit)"
+            },
+            "macos": {
+                "unversioned_filename": "MeikovaAuth.dmg",
+                "download_url": f"{base_release}/MeikovaAuth.dmg",
+                "type": "Disk Image (.dmg)",
+                "os": "macOS 12+ (Apple Silicon / Intel)"
+            },
+            "linux": {
+                "unversioned_filename": "MeikovaAuth.AppImage",
+                "download_url": f"{base_release}/MeikovaAuth.AppImage",
+                "type": "AppImage (.AppImage)",
+                "os": "Ubuntu / Debian / Fedora / Arch"
+            },
+            "android": {
+                "unversioned_filename": "MeikovaAuth.apk",
+                "download_url": f"{base_release}/MeikovaAuth.apk",
+                "type": "PWA & APK Standalone",
+                "os": "Android 8.0+"
+            }
+        }
+        target = platform.lower().strip()
+        if target not in platforms:
+            target = "windows"
+        return {
+            "success": True,
+            "platform": target,
+            "asset": platforms[target],
+            "fallback_portal": "/login"
         }
 
     @staticmethod
@@ -359,7 +807,13 @@ class AuthGateway:
 
         return None
 
-    def google_auth(self, credential: str) -> Dict[str, Any]:
+    def google_auth(
+        self,
+        credential: str,
+        device_name: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        ip_address: Optional[str] = None
+    ) -> Dict[str, Any]:
         g_info = self.verify_google_credential(credential)
         if not g_info or not g_info.get("email"):
             raise ValueError("Google ID Token không hợp lệ hoặc đã hết hạn.")
@@ -386,7 +840,9 @@ class AuthGateway:
                     display_name=user_data.get("display_name"),
                     role=user_data.get("role", "user")
                 )
-                return {"status": "ok", "token": token, "user": user_data}
+                session_id = self.create_session(user_id, device_name, "web", user_agent, ip_address)
+                self.log_audit(user_id, "AUTH_GOOGLE_LOGIN", ip_address=ip_address, user_agent=user_agent)
+                return {"status": "ok", "token": token, "session_id": session_id, "user": user_data}
 
         # Check existing user by email
         user_row = self.fetchone("SELECT id, username, display_name, role FROM users WHERE LOWER(email) = ?", (email,))
@@ -403,10 +859,13 @@ class AuthGateway:
                 (identity_id, user_id, google_sub, email, now)
             )
 
+            session_id = self.create_session(user_id, device_name, "web", user_agent, ip_address)
             token = issue_universal_token(user_id=user_id, username=username, email=email, display_name=display_name, role=role)
+            self.log_audit(user_id, "AUTH_GOOGLE_LINK", ip_address=ip_address, user_agent=user_agent)
             return {
                 "status": "ok",
                 "token": token,
+                "session_id": session_id,
                 "user": {"id": user_id, "username": username, "email": email, "display_name": display_name, "role": role}
             }
 
@@ -432,10 +891,13 @@ class AuthGateway:
             (identity_id, user_id, google_sub, email, now)
         )
 
+        session_id = self.create_session(user_id, device_name, "web", user_agent, ip_address)
         token = issue_universal_token(user_id=user_id, username=candidate_username, email=email, display_name=disp_name, role="user")
+        self.log_audit(user_id, "AUTH_GOOGLE_REGISTER", ip_address=ip_address, user_agent=user_agent)
         return {
             "status": "ok",
             "token": token,
+            "session_id": session_id,
             "user": {
                 "id": user_id,
                 "username": candidate_username,

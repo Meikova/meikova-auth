@@ -134,7 +134,7 @@ def run_tests():
     req_login = urllib.request.Request(f"{base_url}/login")
     with urllib.request.urlopen(req_login) as resp:
         login_html = resp.read().decode("utf-8")
-        log_step("GET /login (SSO Portal UI)", resp.status == 200 and "Meikova ID" in login_html)
+        log_step("GET /login (SSO Portal UI)", resp.status == 200 and ("Meikova Auth" in login_html or "Meikova ID" in login_html))
 
     req_reg = urllib.request.Request(f"{base_url}/register")
     with urllib.request.urlopen(req_reg) as resp:

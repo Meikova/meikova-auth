@@ -3,8 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <title>Meikova ID — Cổng Xác Thực Tập Trung</title>
-  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+  <title>Meikova Auth — Cổng Xác Thực Tập Trung</title>
+  <!-- MEIKOVA AUTH BRAND ASSETS -->
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=auth-v8">
+<link rel="icon" type="image/x-icon" href="/static/favicon.ico?v=auth-v8" sizes="any">
+<link rel="icon" type="image/png" href="/static/favicon-32.png?v=auth-v8" sizes="32x32">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v=auth-v8" sizes="180x180">
+<link rel="manifest" href="/static/site.webmanifest?v=auth-v8">
+<meta name="theme-color" content="#070D17">
+<!-- /MEIKOVA AUTH BRAND ASSETS -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -109,21 +116,21 @@
     }
 
     .brand-logo {
-      width: 32px;
-      height: 32px;
-      margin: 0 auto 4px;
+      width: 44px;
+      height: 44px;
+      margin: 0 auto 8px;
       display: flex;
       align-items: center;
       justify-content: center;
-      border-radius: 8px;
-      background: linear-gradient(135deg, rgba(56, 189, 248, 0.15), rgba(16, 185, 129, 0.06));
-      border: 1px solid rgba(56, 189, 248, 0.25);
+      border-radius: 12px;
+      background: rgba(166, 197, 255, 0.08);
+      border: 1px solid rgba(166, 197, 255, 0.25);
     }
 
     .brand-logo svg {
-      width: 18px;
-      height: 18px;
-      color: var(--accent);
+      width: 36px;
+      height: 36px;
+      color: #A6C5FF;
     }
 
     .brand-title {
@@ -582,12 +589,9 @@
     <!-- Brand Header -->
     <div class="brand-header">
       <div class="brand-logo">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-          <path d="m9 12 2 2 4-4"/>
-        </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" fill="currentColor" role="img" aria-label="Meikova Auth"><title>Meikova Auth — Identity gateway</title><path fill-rule="evenodd" d="M15 85V32L34 13H66L85 32V85H62L50 69L38 85Z M29 38V60L42 47V29H38Z M58 29V47L71 60V38L62 29Z"/></svg>
       </div>
-      <h1 class="brand-title">Meikova ID</h1>
+      <h1 class="brand-title">Meikova Auth</h1>
       <p class="brand-subtitle" id="portalSubtitle">Cổng xác thực tập trung cho toàn hệ sinh thái</p>
       <div class="client-badge" id="clientBadge">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -705,7 +709,7 @@
             </div>
           </div>
           <button class="btn-submit" id="btnRegSubmit" type="submit">
-            <span>Tạo tài khoản Meikova ID</span>
+            <span>Tạo tài khoản Meikova Auth</span>
           </button>
         </form>
 
@@ -1038,9 +1042,13 @@
         return;
       }
 
-      // 3. Standalone mode: Redirect to profile/me
+      // 3. Standalone mode: Redirect to Dashboard Web App
+      try {
+        localStorage.setItem('meikova_auth_token', token);
+        localStorage.setItem('meikova_auth_user', JSON.stringify(user));
+      } catch (e) {}
       setTimeout(() => {
-        window.location.href = '/api/auth/me';
+        window.location.href = '/dashboard';
       }, 700);
     }
 
@@ -1097,14 +1105,14 @@
         if (!res.ok || data.status !== 'ok') {
           showError(data.detail || data.message || 'Không thể tạo tài khoản.');
           btn.disabled = false;
-          btn.innerHTML = '<span>Tạo tài khoản Meikova ID</span>';
+          btn.innerHTML = '<span>Tạo tài khoản Meikova Auth</span>';
           return;
         }
         dispatchAuthSuccess(data);
       } catch (err) {
         showError('Không thể kết nối Cổng xác thực. Vui lòng thử lại.');
         btn.disabled = false;
-        btn.innerHTML = '<span>Tạo tài khoản Meikova ID</span>';
+        btn.innerHTML = '<span>Tạo tài khoản Meikova Auth</span>';
       }
     }
 
