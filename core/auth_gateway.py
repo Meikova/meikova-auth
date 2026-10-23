@@ -259,7 +259,7 @@ class AuthGateway:
         if not password or len(password) < 6:
             raise ValueError("Mật khẩu phải có ít nhất 6 ký tự.")
 
-        clean_email = str(email or "").strip().lower() if email else None
+        clean_email = str(email or "").strip().lower() if email else f"{clean_user}@meikova.io"
         clean_name = str(display_name or "").strip() or clean_user
 
         existing = self.fetchone(
@@ -469,10 +469,11 @@ class AuthGateway:
         u_agent = (user_agent or "")[:255]
         ip = (ip_address or "127.0.0.1")[:45]
 
+        refresh_hash = hashlib.sha256((session_id + secrets.token_hex(8)).encode("utf-8")).hexdigest()
         self.execute(
-            "INSERT INTO sessions (id, user_id, device_name, device_type, user_agent, ip_address, created_at, expires_at, revoked_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)",
-            (session_id, user_id, d_name, d_type, u_agent, ip, now, expires_at)
+            "INSERT INTO sessions (id, user_id, refresh_token_hash, device_name, device_type, user_agent, ip_address, created_at, expires_at, revoked_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)",
+            (session_id, user_id, refresh_hash, d_name, d_type, u_agent, ip, now, expires_at)
         )
         return session_id
 

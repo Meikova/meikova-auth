@@ -1,28 +1,33 @@
 # -*- coding: utf-8 -*-
 """
-Meikova Auth Gateway & Universal SSO Automated Verification Suite
-Tests the running HTTP REST service against Turso Cloud SQLite (`meikova-auth`)
-and Ed25519 cryptographic token issuing/verification.
-Zero-emoji compliant.
+Meikova Auth Gateway & Credential Manager Comprehensive Test Suite
+Validates:
+- Centralized Registration & Authentication
+- Ed25519 Token Signing & Zero-Roundtrip Verification
+- Google OAuth 1-Click Identity Linking
+- Credential Management: Profile Update, Password Change (PBKDF2-SHA256 600k)
+- Active Sessions & Remote Revocation
+- Personal Access Tokens (PAT) & Ecosystem Authorizations
+- Security Audit Trail
+- Dynamic Host Discovery & Zero-Hardcoded-QR (Rule 18)
+- Dynamic App Download Resolution (Rule 15)
+- Tampered & Expired Token Gating
 """
 
 import os
 import sys
 import time
 import json
-import base64
 import socket
-import threading
 import urllib.request
 import urllib.error
+import threading
 from pathlib import Path
 
-TEST_DIR = Path(__file__).resolve().parent
-AUTH_ROOT = TEST_DIR.parent
-KEYS_DIR = AUTH_ROOT / "keys"
+AUTH_ROOT = Path(__file__).resolve().parent.parent
 
-# Ensure test Ed25519 keys exist in CI environment (GitHub Actions)
-if not os.environ.get("AUTH_PRIVATE_KEY_PEM") and not (KEYS_DIR / "ed25519_private.pem").exists():
+# Guarantee Ed25519 test keys
+if not os.environ.get("AUTH_PRIVATE_KEY_PEM"):
     try:
         from cryptography.hazmat.primitives.asymmetric import ed25519
         from cryptography.hazmat.primitives import serialization
@@ -130,16 +135,21 @@ def run_tests():
     code, body = http_request(f"{base_url}/health")
     log_step("GET /health", code == 200 and body.get("status") == "healthy", f"Backend: {body.get('database', {}).get('backend')}, Keys Loaded: {body.get('crypto', {}).get('public_key_loaded')}")
 
-    # 1.1 Web SSO Portal Pages
+    # 1.1 Web SSO Portal & Dashboard Pages
     req_login = urllib.request.Request(f"{base_url}/login")
     with urllib.request.urlopen(req_login) as resp:
         login_html = resp.read().decode("utf-8")
-        log_step("GET /login (SSO Portal UI)", resp.status == 200 and ("Meikova Auth" in login_html or "Meikova ID" in login_html))
+        log_step("GET /login (SSO Portal UI)", resp.status == 200 and "Meikova Auth" in login_html)
 
     req_reg = urllib.request.Request(f"{base_url}/register")
     with urllib.request.urlopen(req_reg) as resp:
         reg_html = resp.read().decode("utf-8")
         log_step("GET /register (SSO Portal UI)", resp.status == 200 and "Tạo tài khoản" in reg_html)
+
+    req_dash = urllib.request.Request(f"{base_url}/dashboard")
+    with urllib.request.urlopen(req_dash) as resp:
+        dash_html = resp.read().decode("utf-8")
+        log_step("GET /dashboard (Credential Manager SPA)", resp.status == 200 and "Meikova Auth" in dash_html and "Hồ Sơ Danh Tính" in dash_html)
 
     # 2. Key Export & JWKS
     code, body = http_request(f"{base_url}/api/auth/keys")
@@ -152,7 +162,7 @@ def run_tests():
     code, body = http_request(f"{base_url}/api/auth/config")
     log_step("GET /api/auth/config", code == 200 and "515668723869" in body.get("google_client_id", ""), f"Google Client ID: {body.get('google_client_id')}")
 
-    # 3. Registration (Centralized)
+    # 3. Registration
     ts = int(time.time())
     test_username = f"meikova_test_{ts}"
     test_email = f"meikova_{ts}@meikova.io"
@@ -167,7 +177,8 @@ def run_tests():
     code, body = http_request(f"{base_url}/api/auth/register", method="POST", data=reg_payload)
     user_id = body.get("user", {}).get("id")
     token = body.get("token")
-    log_step("POST /api/auth/register (New User)", code == 201 and bool(token), f"User ID: {user_id}, Token Issued: {bool(token)}")
+    session_id = body.get("session_id")
+    log_step("POST /api/auth/register (New User)", code == 201 and bool(token) and bool(session_id), f"User ID: {user_id}, Session: {session_id}")
 
     # 4. Duplicate Registration Rejection
     code, dup_body = http_request(f"{base_url}/api/auth/register", method="POST", data=reg_payload)
@@ -201,11 +212,110 @@ def run_tests():
     log_step("POST /api/auth/verify", code == 200 and verify_post_body.get("valid") is True, f"Valid: {verify_post_body.get('valid')}")
 
     # 11. Profile Endpoint (/api/auth/me) with Bearer token
-    code, me_body = http_request(f"{base_url}/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+    auth_headers = {"Authorization": f"Bearer {token}"}
+    code, me_body = http_request(f"{base_url}/api/auth/me", headers=auth_headers)
     me_user = me_body.get("user", {})
     log_step("GET /api/auth/me (Bearer Token)", code == 200 and me_user.get("id") == user_id, f"Username: {me_user.get('username')}, Role: {me_user.get('role')}")
 
-    # 12. Google OAuth 1-Click Login / Auto-Provisioning
+    # 12. Credential Management: Profile Update
+    updated_name = "Nguyen Van Titan"
+    updated_email = f"updated_{ts}@meikova.io"
+    code, prof_body = http_request(
+        f"{base_url}/api/auth/profile",
+        method="PATCH",
+        data={"display_name": updated_name, "email": updated_email},
+        headers=auth_headers
+    )
+    log_step("PATCH /api/auth/profile", code == 200 and prof_body.get("code") == "AUTH_PROFILE_UPDATED", f"New Name: {prof_body.get('user', {}).get('display_name')}")
+
+    # 13. Credential Management: Password Change
+    new_password = "MyNewSecurePassword456"
+    code, pwd_body = http_request(
+        f"{base_url}/api/auth/password",
+        method="POST",
+        data={"old_password": test_password, "new_password": new_password},
+        headers=auth_headers
+    )
+    log_step("POST /api/auth/password", code == 200 and pwd_body.get("code") == "AUTH_PASSWORD_CHANGED")
+
+    # 14. Verify Login with New Password
+    code, new_login_body = http_request(f"{base_url}/api/auth/login", method="POST", data={"username": test_username, "password": new_password})
+    log_step("POST /api/auth/login (with New Password)", code == 200 and bool(new_login_body.get("token")), f"Token received: {bool(new_login_body.get('token'))}")
+
+    # 15. Active Sessions Management
+    code, sess_body = http_request(f"{base_url}/api/auth/sessions", headers=auth_headers)
+    sessions = sess_body.get("sessions", [])
+    log_step("GET /api/auth/sessions", code == 200 and len(sessions) >= 1, f"Active sessions count: {len(sessions)}")
+
+    if sessions:
+        target_sess_id = sessions[0]["id"]
+        code, rev_body = http_request(f"{base_url}/api/auth/sessions/{target_sess_id}", method="DELETE", headers=auth_headers)
+        log_step("DELETE /api/auth/sessions/{id}", code == 200 and rev_body.get("code") == "AUTH_SESSION_REVOKED")
+
+    code, rev_all_body = http_request(f"{base_url}/api/auth/sessions/revoke-others", method="POST", headers=auth_headers)
+    log_step("POST /api/auth/sessions/revoke-others", code == 200 and rev_all_body.get("code") == "AUTH_ALL_SESSIONS_REVOKED")
+
+    # 16. Personal Access Tokens (PAT)
+    code, pat_create_body = http_request(
+        f"{base_url}/api/auth/tokens",
+        method="POST",
+        data={"name": "CLI Automation Token", "scopes": "read,write", "ttl_days": 60},
+        headers=auth_headers
+    )
+    raw_pat = pat_create_body.get("token", {}).get("token", "")
+    pat_id = pat_create_body.get("token", {}).get("id")
+    log_step("POST /api/auth/tokens", code == 201 and raw_pat.startswith("mkv_pat_"), f"PAT Prefix: {raw_pat[:16]}")
+
+    code, pats_body = http_request(f"{base_url}/api/auth/tokens", headers=auth_headers)
+    log_step("GET /api/auth/tokens", code == 200 and len(pats_body.get("tokens", [])) >= 1)
+
+    if pat_id:
+        code, pat_rev_body = http_request(f"{base_url}/api/auth/tokens/{pat_id}", method="DELETE", headers=auth_headers)
+        log_step("DELETE /api/auth/tokens/{id}", code == 200 and pat_rev_body.get("code") == "AUTH_TOKEN_REVOKED")
+
+    # 17. Ecosystem Authorizations & Linked Identities
+    code, apps_body = http_request(f"{base_url}/api/auth/apps", headers=auth_headers)
+    apps = apps_body.get("apps", [])
+    log_step("GET /api/auth/apps", code == 200 and len(apps) >= 3, f"Apps found: {[a['id'] for a in apps]}")
+
+    code, idents_body = http_request(f"{base_url}/api/auth/identities", headers=auth_headers)
+    log_step("GET /api/auth/identities", code == 200 and isinstance(idents_body.get("identities"), list))
+
+    # 18. Security Audit Logs
+    code, audit_body = http_request(f"{base_url}/api/auth/audit?limit=10", headers=auth_headers)
+    logs = audit_body.get("logs", [])
+    log_step("GET /api/auth/audit", code == 200 and len(logs) >= 1, f"Audit entries recorded: {len(logs)}")
+
+    # 19. Rule 18: Dynamic Host Discovery
+    for ep in ["/api/host-info", "/api/network/host-info"]:
+        code, host_data = http_request(f"{base_url}{ep}")
+        log_step(f"GET {ep} (Rule 18 Host Discovery)", code == 200 and "lan_ip" in host_data and "active_url" in host_data, f"LAN: {host_data.get('lan_ip')}, Active: {host_data.get('active_url')}")
+
+    # 20. Rule 18: Dynamic QR Code Endpoint
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            return None
+    opener = urllib.request.build_opener(NoRedirect)
+    try:
+        resp = opener.open(f"{base_url}/api/qr?data=https%3A%2F%2Fmeikova.io")
+        qr_status = resp.status
+        loc = resp.headers.get("Location", "")
+    except urllib.error.HTTPError as e:
+        qr_status = e.code
+        loc = e.headers.get("Location", "")
+    except Exception:
+        qr_status = 0
+        loc = ""
+    log_step("GET /api/qr (Rule 18 QR Endpoint)", qr_status in [200, 307] and "qrserver.com" in loc, f"Status: {qr_status}")
+
+    # 21. Rule 15: Dynamic App Download Resolvers
+    code, win_asset = http_request(f"{base_url}/api/download/app/windows")
+    log_step("GET /api/download/app/windows (Rule 15)", code == 200 and win_asset.get("asset", {}).get("unversioned_filename") == "MeikovaAuth-Setup.exe")
+
+    code, mac_asset = http_request(f"{base_url}/api/download/app/macos")
+    log_step("GET /api/download/app/macos (Rule 15)", code == 200 and mac_asset.get("asset", {}).get("unversioned_filename") == "MeikovaAuth.dmg")
+
+    # 22. Google OAuth 1-Click Login / Auto-Provisioning
     dummy_google_sub = f"google_sub_{ts}"
     dummy_google_email = f"google_{ts}@gmail.com"
     dummy_header = _b64url_encode(json.dumps({"alg": "RS256"}).encode("utf-8"))
@@ -222,11 +332,11 @@ def run_tests():
     g_user_id = g_body.get("user", {}).get("id")
     log_step("POST /api/auth/google (1-Click Auto Provision)", code == 200 and bool(g_token), f"User: {g_body.get('user', {}).get('username')}, ID: {g_user_id}")
 
-    # 13. Google OAuth Deduplication / Link
+    # 23. Google OAuth Deduplication / Link
     code, g_body2 = http_request(f"{base_url}/api/auth/google", method="POST", data={"credential": fake_google_id_token})
     log_step("POST /api/auth/google (Identity Link Deduplication)", code == 200 and g_body2.get("user", {}).get("id") == g_user_id, f"Deduplicated to User ID: {g_body2.get('user', {}).get('id')}")
 
-    # 14. Tampered Token Rejection
+    # 24. Tampered Token Rejection
     tampered_token = (token or "dummytoken12345678")[:-4] + "AAAA"
     code, _ = http_request(f"{base_url}/api/auth/verify?token={tampered_token}")
     log_step("Tampered Token Rejection (Verify API)", code == 401, f"Code: {code}")
@@ -234,12 +344,12 @@ def run_tests():
     code, _ = http_request(f"{base_url}/api/auth/me", headers={"Authorization": f"Bearer {tampered_token}"})
     log_step("Tampered Token Rejection (Me API)", code == 401, f"Code: {code}")
 
-    # 15. Expired Token Rejection
+    # 25. Expired Token Rejection
     expired_token = issue_universal_token(user_id="usr_expired", username="expired_user", expires_in_sec=-3600)
     code, _ = http_request(f"{base_url}/api/auth/verify?token={expired_token}")
     log_step("Expired Token Rejection (Verify API)", code == 401, f"Code: {code}")
 
-    # 16. Missing Token Rejection
+    # 26. Missing Token Rejection
     code, _ = http_request(f"{base_url}/api/auth/me")
     log_step("Missing Token Rejection", code == 401, f"Code: {code}")
 
