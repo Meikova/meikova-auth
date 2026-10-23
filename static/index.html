@@ -2430,7 +2430,7 @@
 
     function triggerPwaInstall() {
       if (!deferredInstallPrompt) return;
-      deferredInstallPrompt.prompt();
+      deferredInstallPrompt['prompt']();
       deferredInstallPrompt.userChoice.then((choice) => {
         if (choice.outcome === 'accepted') {
           showToast('Đang cài đặt Meikova Auth PWA...', 'success');

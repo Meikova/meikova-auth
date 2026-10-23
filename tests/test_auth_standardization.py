@@ -118,9 +118,6 @@ class TestAuthStandardization(unittest.TestCase):
                 continue
             content = p.read_text(encoding="utf-8")
             for i, line in enumerate(content.splitlines(), 1):
-                # Ignore deferred PWA prompt method: deferredInstallPrompt.prompt()
-                if "deferredInstallPrompt.prompt" in line:
-                    continue
                 self.assertIsNone(dialog_regex.search(line), f"Found dialog in {p.name}:{i}: {line.strip()}")
                 self.assertIsNone(emoji_regex.search(line), f"Found emoji in {p.name}:{i}: {line.strip()}")
 
