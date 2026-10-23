@@ -1,6 +1,6 @@
-# Meikova Auth Gateway & Universal Identity Service
+# Meikova Auth — Multiplatform Identity & Credential Management Hub
 
-Centralized Identity Provider (IdP) and Universal Single Sign-On (SSO) Gateway for the Meikova Ecosystem (**Meikova Relay**, **Meikova Loop**, **Meikova Harvest**).
+Centralized Identity Provider (IdP), Universal Single Sign-On (SSO) Gateway, and Multiplatform Credential Manager (Web, Desktop, Mobile PWA) for the Meikova Ecosystem (**Meikova Relay**, **Meikova Loop**, **Meikova Harvest**).
 
 Designed with zero external service dependencies for verification, leveraging asymmetric Ed25519 cryptographic tokens and Turso Cloud distributed SQLite over encrypted libSQL HTTPS pipelines.
 
@@ -51,21 +51,49 @@ flowchart TD
 
 ---
 
-## API Endpoints
+## API Endpoints & Interfaces
 
-| Method | Endpoint | Description |
+### User Interfaces (Ambient Dark)
+| Method | Route | Description |
 | :--- | :--- | :--- |
+| `GET` | `/dashboard`, `/account`, `/app` | Credential & Identity Management SPA (Profile, Sessions, PAT, Ecosystem, Audit) |
+| `GET` | `/login` | Universal SSO Portal login interface |
+| `GET` | `/register` | Universal SSO Portal registration interface |
 | `GET` | `/` | Service health status and metadata index |
 | `GET` | `/health` | Healthcheck (database connectivity & loaded key status) |
-| `GET` | `/login` | Ambient Dark SSO Portal login interface |
-| `GET` | `/register` | Ambient Dark SSO Portal registration interface |
-| `POST` | `/api/auth/register` | Centralized user registration (PBKDF2-SHA256, 100k rounds) |
-| `POST` | `/api/auth/login` | Centralized user authentication (returns Ed25519 JWT) |
-| `POST` | `/api/auth/google` | Google OAuth identity linking and automatic provisioning |
-| `GET` | `/api/auth/me` | Fetch active user profile via `Authorization: Bearer <token>` |
-| `GET/POST` | `/api/auth/verify` | Gateway token validation endpoint for external services |
-| `GET` | `/api/auth/keys` | Public Key export (PEM and JWKS format) |
+
+### Core Authentication & Security
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/api/auth/register` | Centralized registration (PBKDF2-SHA256, 600k rounds) |
+| `POST` | `/api/auth/login` | Centralized authentication (returns Ed25519 JWT) |
+| `POST` | `/api/auth/google` | 1-Click Google OAuth GIS provisioning and identity linking |
+| `GET` | `/api/auth/me` | Active user profile via `Authorization: Bearer <token>` |
+| `PATCH` | `/api/auth/profile` | Update user display name and contact email |
+| `POST` | `/api/auth/password` | Update account password (PBKDF2-SHA256 600,000 rounds) |
+| `GET/POST` | `/api/auth/verify` | Offline-verifiable token validation for services |
+| `GET` | `/api/auth/keys` | Public Key export (PEM and RFC 8037 JWKS format) |
 | `GET` | `/.well-known/jwks.json` | RFC 8037 standard JWKS keyset for standard OAuth2/OIDC clients |
+
+### Sessions, Tokens & Ecosystem Governance
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/auth/sessions` | List active sessions, IP addresses, and device telemetry |
+| `DELETE` | `/api/auth/sessions/{id}` | Remote revoke an individual device session |
+| `POST` | `/api/auth/sessions/revoke-others` | Remote revoke all other active sessions |
+| `GET` | `/api/auth/tokens` | List Personal Access Tokens (PAT) |
+| `POST` | `/api/auth/tokens` | Generate new PAT (`mkv_pat_<hex>`) with SHA-256 storage |
+| `DELETE` | `/api/auth/tokens/{id}` | Revoke a Personal Access Token |
+| `GET` | `/api/auth/identities` | Query linked third-party identities (Google OAuth GIS) |
+| `GET` | `/api/auth/apps` | Query authorized ecosystem apps (Loop, Harvest, Relay) |
+| `GET` | `/api/auth/audit` | Query immutable security audit log trail |
+
+### Multiplatform Discovery & Downloads
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/host-info` | Rule 18 Host Discovery: Active URL, Tailscale IP, LAN IP |
+| `GET` | `/api/qr` | Rule 18 Fast Mobile Connect QR generator (SVG / 307 redirect) |
+| `GET` | `/api/download/app/{target}` | Rule 15 Dynamic GitHub Release asset download resolver |
 
 ---
 
@@ -176,8 +204,14 @@ cd meikova-auth
 # Install dependencies
 pip install -r requirements.txt
 
-# Run the 21-point automated verification suite
+# Run the 40-point automated verification suite
 python tests/test_auth_server.py
+
+# Run the 7-point brand compliance suite
+python tests/test_brand_assets.py
+
+# Launch native desktop shell (Edge WebView2)
+python meikova_auth_desktop.py
 
 # Start local server on port 8990
 python server.py --host 0.0.0.0 --port 8990
