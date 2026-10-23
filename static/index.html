@@ -80,12 +80,12 @@
       overflow-x: hidden;
     }
 
-    /* Frameless Desktop Titlebar */
+    /* Frameless Desktop Titlebar - CHỈ hiển thị trong Desktop Shell */
     .titlebar {
+      display: none; /* Mặc định ẩn hoàn toàn trên Web Browser */
       height: 38px;
       background: #060B14;
       border-bottom: 1px solid var(--card-border);
-      display: flex;
       align-items: center;
       justify-content: space-between;
       padding: 0 12px;
@@ -94,6 +94,14 @@
       position: sticky;
       top: 0;
       z-index: 100;
+    }
+
+    body.is-desktop-shell .titlebar {
+      display: flex;
+    }
+
+    body.is-desktop-shell .ambient-chamber {
+      min-height: calc(100vh - 38px);
     }
 
     .titlebar-brand {
@@ -1776,6 +1784,26 @@
   <div class="toast-container" id="toastContainer"></div>
 
   <script>
+    // Desktop Shell Detection (Rule 5 & Desktop-Shell-Isolation Mandate)
+    function detectDesktopShell() {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const isDesktop = params.get('platform') === 'desktop' ||
+                          params.get('shell') === 'desktop' ||
+                          window.pywebview !== undefined ||
+                          (window.navigator && window.navigator.userAgent && window.navigator.userAgent.includes('MeikovaDesktop'));
+        if (isDesktop) {
+          document.body.classList.add('is-desktop-shell');
+        } else {
+          document.body.classList.remove('is-desktop-shell');
+        }
+      } catch (_) {}
+    }
+    window.addEventListener('pywebviewready', () => {
+      document.body.classList.add('is-desktop-shell');
+    });
+    detectDesktopShell();
+
     // State
     let authToken = localStorage.getItem('meikova_auth_token') || '';
     let currentUser = null;

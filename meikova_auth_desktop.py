@@ -136,7 +136,7 @@ def main():
         api = DesktopApi()
         window = webview.create_window(
             title="Meikova Auth",
-            url=f"{server_url}/dashboard",
+            url=f"{server_url}/dashboard?platform=desktop",
             width=1180,
             height=820,
             min_size=(800, 600),
