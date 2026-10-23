@@ -224,6 +224,7 @@ def get_api_auth_keys():
 
 
 @app.get("/api/auth/config")
+@app.get("/api/auth/google/config")
 def get_auth_config():
     return {
         "status": "online",
@@ -240,6 +241,7 @@ def get_auth_config():
 
 
 @app.get("/health")
+@app.get("/api/health")
 def health_check():
     backend = "turso" if gateway_instance.is_turso else "sqlite_local"
     db_ok = False

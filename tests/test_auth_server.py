@@ -172,7 +172,7 @@ def run_tests():
         "username": test_username,
         "password": test_password,
         "email": test_email,
-        "display_name": "Titan Test Master"
+        "display_name": "Meikova Test Master"
     }
     code, body = http_request(f"{base_url}/api/auth/register", method="POST", data=reg_payload)
     user_id = body.get("user", {}).get("id")
@@ -218,7 +218,7 @@ def run_tests():
     log_step("GET /api/auth/me (Bearer Token)", code == 200 and me_user.get("id") == user_id, f"Username: {me_user.get('username')}, Role: {me_user.get('role')}")
 
     # 12. Credential Management: Profile Update
-    updated_name = "Nguyen Van Titan"
+    updated_name = "Nguyen Van Meikova"
     updated_email = f"updated_{ts}@meikova.io"
     code, prof_body = http_request(
         f"{base_url}/api/auth/profile",
