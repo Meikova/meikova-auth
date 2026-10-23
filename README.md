@@ -1,107 +1,151 @@
-# Meikova Auth — Multiplatform Identity & Credential Management Hub
+# Meikova Auth
 
-Centralized Identity Provider (IdP), Universal Single Sign-On (SSO) Gateway, and Multiplatform Credential Manager (Web, Desktop, Mobile PWA) for the Meikova Ecosystem (**Meikova Relay**, **Meikova Loop**, **Meikova Harvest**).
+<div align="center">
 
-Designed with zero external service dependencies for verification, leveraging asymmetric Ed25519 cryptographic tokens and Turso Cloud distributed SQLite over encrypted libSQL HTTPS pipelines.
+<img src="docs/assets/logo.png" alt="Meikova Auth Logo" width="160px">
+
+[![Release](https://img.shields.io/github/v/release/Meikova/meikova-auth?style=flat-square&color=059669)](https://github.com/Meikova/meikova-auth/releases)
+[![Platforms](https://img.shields.io/badge/Platforms-Web%20%7C%20Desktop%20%7C%20Mobile%20PWA-2563eb?style=flat-square)](https://github.com/Meikova/meikova-auth)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-3b82f6?style=flat-square)](https://www.python.org/)
+[![Database](https://img.shields.io/badge/Database-Turso%20libSQL-00e699?style=flat-square)](https://turso.tech/)
+[![Cryptography](https://img.shields.io/badge/Crypto-Ed25519%20RFC8032-7c3aed?style=flat-square)](https://tools.ietf.org/html/rfc8032)
+[![License](https://img.shields.io/badge/License-MIT-16a34a?style=flat-square)](LICENSE)
+
+**Cổng xác thực tập trung, Universal Single Sign-On (SSO) Ed25519 và trung tâm quản lý danh tính đa nền tảng cho hệ sinh thái Meikova.**
+
+[Cổng Đăng Nhập Trực Tuyến](https://meikova-auth.onrender.com) | [Tài Liệu Kỹ Thuật](docs/GOOGLE-CREDENTIALS-GUIDE.md) | [Báo Lỗi](https://github.com/Meikova/meikova-auth/issues)
+
+</div>
 
 ---
 
-## Brand identity
+## 1. Tổng quan hệ thống
 
-Dedicated **Meikova Auth — Identity Gateway** logo, distinct from Shield. See [brand integration and offline checks](docs/BRAND.md).
+Meikova Auth là dịch vụ Identity Provider (IdP) và Universal Single Sign-On (SSO) Gateway tập trung cho toàn bộ hệ sinh thái Meikova Platform (Meikova Harvest, Meikova Loop, Meikova Relay, Meikova Balance, Meikova Campus...).
 
-## Architecture Highlights
+- **Universal SSO Ed25519**: Token đăng nhập được ký mật mã bất đối xứng Ed25519 (RFC 8032). Tất cả ứng dụng con tự kiểm thực token cục bộ trong **0.1ms** bằng Public Key mà không cần gọi API qua mạng.
+- **Cơ sở dữ liệu phân tán Turso Cloud libSQL**: Dữ liệu tài khoản, phiên đăng nhập và định danh được đồng bộ thời gian thực qua Turso Cloud với cơ chế tự động chuyển vùng dự phòng (Fallback) về SQLite WAL cục bộ.
+- **Quản lý phiên đa nền tảng**: Cung cấp giao diện quản lý phiên đăng nhập thiết bị theo thời gian thực, thu hồi phiên từ xa, tạo mã truy cập cá nhân (PAT) và tích hợp Google Identity Services (GIS) 1-click.
+- **Giao diện Ambient Dark & Zero-Dependency**: Xây dựng theo phong cách Ambient Dark thuần khiết, 100% Inline Vector SVG, Zero-Native-Inputs và không phụ thuộc framework frontend nặng nề.
+
+---
+
+## 2. Tính năng nổi bật
+
+### Cổng đăng nhập tập trung (Universal SSO Portal)
+
+- **Đăng ký và Đăng nhập duy nhất**: Một tài khoản Meikova ID truy cập toàn bộ hệ sinh thái sản phẩm trên mọi nền tảng (Web, Desktop, Mobile PWA).
+- **Liên kết danh tính Google OAuth 1-Click**: Tích hợp Google Identity Services với cơ chế tự động liên kết tài khoản dựa trên email đã xác minh.
+- **Khóa bảo mật Ed25519 & JWKS chuẩn RFC 8037**: Xuất bản bộ khóa công khai tại `/.well-known/jwks.json` và `/api/auth/keys` cho phép các ứng dụng OAuth2/OIDC chuẩn hóa tích hợp.
+
+### Quản trị bảo mật và Phiên làm việc (Session Hub)
+
+- **Giám sát thiết bị kết nối**: Liệt kê chi tiết các phiên đăng nhập đang hoạt động kèm địa chỉ IP, User-Agent và thời gian hoạt động gần nhất.
+- **Thu hồi phiên từ xa (Remote Session Revocation)**: Cho phép đăng xuất từng thiết bị cụ thể hoặc đăng xuất toàn bộ các thiết bị khác chỉ với một nút bấm.
+- **Quản lý Personal Access Tokens (PAT)**: Tạo mã token truy cập API (`mkv_pat_<hex>`) với cơ chế băm SHA-256 an toàn tuyệt đối.
+- **Nhật ký kiểm toán bất biến (Audit Trail)**: Ghi lại đầy đủ mọi hoạt động đăng nhập, đổi mật khẩu và cấp quyền ứng dụng.
+
+### Khám phá mạng và Kết nối thiết bị di động
+
+- **Dynamic Host Discovery**: Tự động bóc tách Tailscale IP, LAN IP và Public Active URL thông qua endpoint chuẩn `GET /api/host-info`.
+- **Tạo mã QR kết nối nhanh**: Cung cấp mã QR định dạng SVG offline hoặc URL redirect kết nối thiết bị di động tức thì.
+- **Dynamic Release Asset Resolver**: Phân giải liên kết tải bộ cài đặt native qua `GET /api/download/app/{target}` đối soát trực tiếp với GitHub Release API mới nhất.
+
+---
+
+## 3. Kiến trúc hệ thống và luồng dữ liệu
 
 ```mermaid
 flowchart TD
-    subgraph Clients["Downstream Client Applications"]
+    subgraph Clients["Ứng dụng con trong Hệ sinh thái Meikova"]
         Harvest["Meikova Harvest (Web / Desktop)"]
         Loop["Meikova Loop (Web / Mobile / Desktop)"]
         Relay["Meikova Relay (Desktop / Web Remote)"]
+        Balance["Meikova Balance (Web / Desktop / Mobile)"]
+        Campus["Meikova Campus (Web / LMS)"]
     end
 
-    subgraph AuthGateway["Meikova Central Auth Gateway"]
+    subgraph AuthGateway["Meikova Central Auth Gateway (:8990 / Cloud)"]
         SSO["SSO Portal UI (/login, /register)"]
         API["REST APIs (/api/auth/*)"]
         JWKS["JWKS Keyset (/.well-known/jwks.json)"]
         Core["Core Engine (PBKDF2-SHA256, Ed25519 Signer)"]
     end
 
-    subgraph Storage["Central Database"]
+    subgraph Storage["Cơ sở dữ liệu"]
         Turso[("Turso Cloud SQLite: meikova-auth")]
         Fallback[("Local SQLite WAL Fallback")]
     end
 
-    Clients -->|"1. User clicks SSO Login (Popup / Redirect)"| SSO
+    Clients -->|"1. Người dùng bấm Đăng nhập Meikova ID"| SSO
     SSO --> API
     API --> Core
-    Core -->|"Read / Write users, identities, sessions"| Turso
-    Turso -.->|"Auto Fallback"| Fallback
-    Core -->|"2. Signs Universal SSO Token (Ed25519)"| API
-    API -->|"3. Returns Token via postMessage / URL hash"| Clients
-    Clients -->|"4. Verifies Token Locally in 0.1ms (Public Key)"| Clients
+    Core -->|"Đọc / Ghi users, identities, sessions"| Turso
+    Turso -.->|"Dự phòng khi mất kết nối"| Fallback
+    Core -->|"2. Ký Universal SSO Token (Ed25519)"| API
+    API -->|"3. Trả về Token qua postMessage / URL hash"| Clients
+    Clients -->|"4. Kiểm thực Token cục bộ trong 0.1ms (Public Key)"| Clients
 ```
 
-- **Universal SSO Tokens:** Tokens are cryptographically signed using asymmetric Ed25519 (RFC 8032) private keys with a 30-day validity window.
-- **Zero-Roundtrip Client Verification:** All downstream applications verify tokens locally in **~0.1ms** using the public key without needing HTTP requests to the Gateway.
-- **Turso Cloud SQLite Backend:** Fully distributed, highly available database (`meikova-auth`) with automatic failover to local SQLite WAL storage.
-- **Unified Account Provisioning:** Single credential set works across all Meikova desktop, web, and mobile apps. Supports username/email login and 1-Click Google OAuth GIS with automatic identity linking.
-- **Standard JWKS Keyset:** Exposes RFC 8037 standard JWKS keyset at `/.well-known/jwks.json` and `/api/auth/keys`.
-- **Zero-Emoji & Ambient Dark UI:** Standalone SSO portal interface built with Meikova Ambient Dark design system and 100% inline SVG craftsmanship.
+---
+
+## 4. Công nghệ sử dụng
+
+- **Core Backend**: Python 3.11+, Standard Library `http.server` tối ưu hiệu năng cao, zero-framework boilerplate.
+- **Bảo mật & Mật mã**: Cryptography (`ed25519`, `serialization`), PBKDF2-SHA256 (600,000 rounds), Base64URL.
+- **Cơ sở dữ liệu**: Turso Cloud libSQL (`libsql-client`), Local SQLite WAL mode.
+- **Frontend & UI**: Vanilla JavaScript (ES Modules), Ambient Dark CSS (OKLCH Dynamic Lighting), 100% Inline Vector SVG.
+- **Desktop Shell**: Microsoft Edge WebView2 (`meikova_auth_desktop.py`).
+- **Triển khai & CI/CD**: Render Cloud (`render.yaml`), GitHub Actions.
 
 ---
 
-## API Endpoints & Interfaces
+## 5. Hướng dẫn phát triển (Development)
 
-### User Interfaces (Ambient Dark)
-| Method | Route | Description |
-| :--- | :--- | :--- |
-| `GET` | `/dashboard`, `/account`, `/app` | Credential & Identity Management SPA (Profile, Sessions, PAT, Ecosystem, Audit) |
-| `GET` | `/login` | Universal SSO Portal login interface |
-| `GET` | `/register` | Universal SSO Portal registration interface |
-| `GET` | `/` | Service health status and metadata index |
-| `GET` | `/health` | Healthcheck (database connectivity & loaded key status) |
+### Yêu cầu hệ thống
 
-### Core Authentication & Security
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `POST` | `/api/auth/register` | Centralized registration (PBKDF2-SHA256, 600k rounds) |
-| `POST` | `/api/auth/login` | Centralized authentication (returns Ed25519 JWT) |
-| `POST` | `/api/auth/google` | 1-Click Google OAuth GIS provisioning and identity linking |
-| `GET` | `/api/auth/me` | Active user profile via `Authorization: Bearer <token>` |
-| `PATCH` | `/api/auth/profile` | Update user display name and contact email |
-| `POST` | `/api/auth/password` | Update account password (PBKDF2-SHA256 600,000 rounds) |
-| `GET/POST` | `/api/auth/verify` | Offline-verifiable token validation for services |
-| `GET` | `/api/auth/keys` | Public Key export (PEM and RFC 8037 JWKS format) |
-| `GET` | `/.well-known/jwks.json` | RFC 8037 standard JWKS keyset for standard OAuth2/OIDC clients |
+- Python 3.11+
+- Git
 
-### Sessions, Tokens & Ecosystem Governance
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `GET` | `/api/auth/sessions` | List active sessions, IP addresses, and device telemetry |
-| `DELETE` | `/api/auth/sessions/{id}` | Remote revoke an individual device session |
-| `POST` | `/api/auth/sessions/revoke-others` | Remote revoke all other active sessions |
-| `GET` | `/api/auth/tokens` | List Personal Access Tokens (PAT) |
-| `POST` | `/api/auth/tokens` | Generate new PAT (`mkv_pat_<hex>`) with SHA-256 storage |
-| `DELETE` | `/api/auth/tokens/{id}` | Revoke a Personal Access Token |
-| `GET` | `/api/auth/identities` | Query linked third-party identities (Google OAuth GIS) |
-| `GET` | `/api/auth/apps` | Query authorized ecosystem apps (Loop, Harvest, Relay) |
-| `GET` | `/api/auth/audit` | Query immutable security audit log trail |
+### Khởi chạy môi trường thử nghiệm
 
-### Multiplatform Discovery & Downloads
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `GET` | `/api/host-info` | Rule 18 Host Discovery: Active URL, Tailscale IP, LAN IP |
-| `GET` | `/api/qr` | Rule 18 Fast Mobile Connect QR generator (SVG / 307 redirect) |
-| `GET` | `/api/download/app/{target}` | Rule 15 Dynamic GitHub Release asset download resolver |
+1. **Clone mã nguồn và cài đặt dependencies**:
+
+```bash
+git clone https://github.com/Meikova/meikova-auth.git
+cd meikova-auth
+pip install -r requirements.txt
+```
+
+2. **Chạy bộ kiểm thử tự động xác nhận chất lượng**:
+
+```bash
+# Chạy bộ test 40 điểm kiểm định Auth Gateway:
+python tests/test_auth_server.py
+
+# Chạy kiểm thử tuân thủ tài sản thương hiệu:
+python tests/test_brand_assets.py
+```
+
+3. **Khởi chạy máy chủ cục bộ**:
+
+```bash
+python server.py --host 0.0.0.0 --port 8990
+```
+
+4. **Khởi chạy ứng dụng Desktop native (WebView2)**:
+
+```bash
+python meikova_auth_desktop.py
+```
 
 ---
 
-## Universal SSO Integration (Client Side)
+## 6. Giao tiếp kiểm thực Token (Universal SSO Client Integration)
 
-Client applications do not need to call the Auth Gateway on every request. Verification happens entirely offline in ~0.1ms using the public key.
+Ứng dụng con không cần gửi request kiểm tra token qua mạng mỗi lần xử lý. Quá trình kiểm thực diễn ra 100% offline trong **~0.1ms** qua Public Key:
 
-### Python Client Verification
+### Python Client Integration
 
 ```python
 import base64
@@ -129,7 +173,7 @@ def verify_sso_token(token: str, public_key_pem: str) -> dict | None:
         return None
 ```
 
-### Node.js Client Verification
+### Node.js / TypeScript Client Integration
 
 ```javascript
 const crypto = require('crypto');
@@ -154,75 +198,36 @@ function verifySsoToken(token, publicKeyPem) {
 
 ---
 
-## Documentation & Guides
+## 7. Cấu hình và Biến môi trường (.env)
 
-- [Google OAuth Credentials Setup Guide](docs/GOOGLE-CREDENTIALS-GUIDE.md) - Step-by-step instructions for Google Cloud Console OAuth 2.0 configuration, consent screen, authorized origins, and GIS integration.
-
----
-
-## Deployment to Render Cloud
-
-### Blueprint Deployment (Recommended)
-This repository includes a `render.yaml` Blueprint definition for automated deployment.
-
-1. Connect this repository to your Render account at [dashboard.render.com](https://dashboard.render.com).
-2. Select **New +** -> **Blueprint**.
-3. Render automatically reads `render.yaml` and provisions the Python Web Service.
-4. Provide the required secret environment variables listed below.
-
-### Manual Web Service Configuration
-
-1. In Render Dashboard, click **New +** -> **Web Service**.
-2. Select the `Meikova/meikova-auth` repository.
-3. Configure the service settings:
-   - **Environment:** `Python 3`
-   - **Build Command:** `pip install -r requirements.txt`
-   - **Start Command:** `python server.py`
-   - **Health Check Path:** `/health`
-   - **Port:** `10000`
-
-### Required Environment Variables
-
-| Variable Name | Required | Description | Example / Value |
+| Tên biến | Bắt buộc | Mô tả | Giá trị mẫu |
 | :--- | :---: | :--- | :--- |
-| `AUTH_TURSO_DATABASE_URL` | Yes | Turso Cloud Database URL | `https://meikova-auth-m3ik18dp.aws-ap-northeast-1.turso.io` |
-| `AUTH_TURSO_AUTH_TOKEN` | Yes | Turso Cloud JWT Auth Token | `eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9...` |
-| `AUTH_PRIVATE_KEY_B64` | Yes | Base64-encoded Ed25519 Private Key PEM | `LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0t...` |
-| `AUTH_PUBLIC_KEY_B64` | Yes | Base64-encoded Ed25519 Public Key PEM | `LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0...` |
-| `PORT` | Yes | HTTP Server listening port | `10000` |
-| `CORS_ORIGINS` | No | Allowed CORS origins (comma-separated or `*`) | `*` |
+| `AUTH_TURSO_DATABASE_URL` | Có | Địa chỉ Turso Cloud SQLite | `https://meikova-auth-m3ik18dp.aws-ap-northeast-1.turso.io` |
+| `AUTH_TURSO_AUTH_TOKEN` | Có | JWT Token kết nối Turso Cloud | `eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9...` |
+| `AUTH_PRIVATE_KEY_B64` | Có | Khóa riêng tư Ed25519 (Base64 PEM) | `LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0t...` |
+| `AUTH_PUBLIC_KEY_B64` | Có | Khóa công khai Ed25519 (Base64 PEM) | `LS0tLS1CRUdJTiBQVUJMSUMgS0VZLS0tLS0...` |
+| `PORT` | Không | Cổng dịch vụ HTTP (Mặc định: 8990 / Render: 10000) | `8990` |
+| `CORS_ORIGINS` | Không | Danh sách tên miền CORS được phép (`*` hoặc phân tách bằng phẩy) | `*` |
 
 ---
 
-## Local Development & Testing
+## 8. Giấy phép bản quyền (License)
 
-```bash
-# Clone the repository
-git clone https://github.com/Meikova/meikova-auth.git
-cd meikova-auth
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run the 40-point automated verification suite
-python tests/test_auth_server.py
-
-# Run the 7-point brand compliance suite
-python tests/test_brand_assets.py
-
-# Launch native desktop shell (Edge WebView2)
-python meikova_auth_desktop.py
-
-# Start local server on port 8990
-python server.py --host 0.0.0.0 --port 8990
-```
+Dự án được phát hành theo giấy phép **MIT License**.
+Bản quyền thuộc về **Meikova Auth Team © 2026**.
 
 ---
 
-## Repository Metadata
+## 9. Hệ sinh thái Meikova
 
-- **Organization:** [Meikova](https://github.com/Meikova)
-- **Live Portal:** `https://meikova-auth.onrender.com`
-- **Supported Clients:** Meikova Harvest, Meikova Loop, Meikova Relay
-- **Cryptographic Standard:** Ed25519 (RFC 8032), RFC 8037 JWKS
-- **License:** MIT
+- [Meikova Harvest](https://github.com/Meikova/meikova-harvest) - Hệ sinh thái trích xuất và tải đa phương tiện đa nền tảng.
+- [Meikova Loop](https://github.com/Meikova/meikova-loop) - DJ mashup và infinite soundscape engine chạy trên web, desktop và mobile.
+- [Meikova Relay](https://github.com/Meikova/meikova-relay) - Điều khiển máy tính từ xa độ trễ thấp, outbound-only.
+- [Meikova Auth](https://github.com/Meikova/meikova-auth) - Cổng xác thực tập trung, Universal SSO Ed25519 và quản lý danh tính đa nền tảng.
+- [Meikova Balance](https://github.com/Meikova/meikova-balance) - Quản lý tài chính cá nhân, chia hóa đơn nhóm và trợ lý AI đa tầng.
+- [Meikova Campus](https://github.com/Meikova/meikova-campus) - Nền tảng thương mại khóa học, phân quyền Google Drive tự động và LMS trực tuyến.
+- [Meikova Exchange](https://github.com/Meikova/meikova-exchange) - Sàn giao dịch B2B cho dự án phần mềm, mã nguồn và tài sản số.
+- [Meikova Traverse](https://github.com/Meikova/meikova-traverse) - Trình duyệt tệp tin cục bộ, SFTP, WebDAV và quản lý lưu trữ đa nền tảng.
+- [Meikova Shield](https://github.com/Meikova/meikova-shield) - Hệ thống phòng thủ an ninh mạng và phát hiện web defacement bằng học máy lai ghép.
+- [Meikova Vision](https://github.com/Meikova/meikova-vision) - Bộ công cụ xử lý ảnh RAW, ghép đa phơi sáng HDR và tone mapping chuyên nghiệp.
+- [Meikova Flow](https://github.com/Meikova/meikova-flow) - Động cơ trích xuất, biến đổi, nạp dữ liệu (ETL) và tự động hóa luồng báo cáo.
