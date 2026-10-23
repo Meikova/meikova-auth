@@ -1025,7 +1025,7 @@
             token: token,
             user: user,
             client_id: clientId
-          }, targetOrigin === '*' ? '*' : targetOrigin);
+          }, '*');
         } catch (e) {
           console.warn('postMessage failed:', e);
         }
@@ -1039,6 +1039,13 @@
       if (redirectUri) {
         const hash = `#token=${encodeURIComponent(token)}&user_id=${encodeURIComponent(user.id)}&username=${encodeURIComponent(user.username)}`;
         window.location.href = redirectUri + hash;
+        return;
+      }
+
+      // 2b. Fallback: If targetOrigin is provided, redirect to client app callback
+      if (targetOrigin && targetOrigin !== '*' && targetOrigin.startsWith('http')) {
+        const hash = `#token=${encodeURIComponent(token)}&user_id=${encodeURIComponent(user.id)}&username=${encodeURIComponent(user.username)}`;
+        window.location.href = targetOrigin.replace(/\/$/, '') + '/auth/callback' + hash;
         return;
       }
 

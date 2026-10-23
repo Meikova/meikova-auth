@@ -1806,6 +1806,20 @@
 
     // State
     let authToken = localStorage.getItem('meikova_auth_token') || '';
+
+    // If opened as a popup from another Meikova app and already authenticated, notify opener and close
+    if (window.opener && !window.opener.closed && authToken) {
+      try {
+        const cachedUser = JSON.parse(localStorage.getItem('meikova_auth_user') || '{}');
+        window.opener.postMessage({
+          type: 'MEIKOVA_SSO_SUCCESS',
+          token: authToken,
+          user: cachedUser,
+          client_id: 'balance'
+        }, '*');
+        setTimeout(() => window.close(), 600);
+      } catch (_) {}
+    }
     let currentUser = null;
     let deferredInstallPrompt = null;
 
