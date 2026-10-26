@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  auth:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: meikova-auth
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8990}:${PORT:-8990}"
+    environment:
+      - PORT=${PORT:-8990}
+      - HOST=0.0.0.0
+      - AUTO_TUNNEL=${AUTO_TUNNEL:-0}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+    volumes:
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8990/api/auth/config"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
