@@ -37,6 +37,7 @@ from pydantic import BaseModel, Field
 
 from core.auth_gateway import AuthGateway, gateway_instance, get_google_client_id
 from core.universal_sso import verify_universal_token, issue_universal_token
+from core.tunnel_manager import tunnel_manager
 
 app = FastAPI(
     title="Meikova Auth Gateway & Credential Manager",
@@ -276,7 +277,50 @@ def health_check():
 def get_host_info_endpoint(request: Request):
     port = int(os.environ.get("PORT", "8990"))
     host = request.headers.get("x-forwarded-host") or request.headers.get("host") or f"127.0.0.1:{port}"
-    return gateway_instance.get_host_info(host, port)
+    res = gateway_instance.get_host_info(host, port)
+    tunnel_st = tunnel_manager.get_status()
+    res["tunnel"] = tunnel_st
+    if tunnel_st.get("running") and tunnel_st.get("url"):
+        res["active_url"] = tunnel_st["url"]
+        res["public_origin"] = tunnel_st["url"]
+    return res
+
+
+# Cloudflare Quick Tunnel API (Multi-Platform One-Click WAN)
+@app.get("/api/tunnel/status")
+def get_tunnel_status():
+    return tunnel_manager.get_status()
+
+
+@app.post("/api/tunnel/start")
+def start_tunnel():
+    port = int(os.environ.get("PORT", "8990"))
+    try:
+        st = tunnel_manager.start(port)
+        return {"ok": True, **st}
+    except Exception as e:
+        st = tunnel_manager.get_status()
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(e), **st})
+
+
+@app.post("/api/tunnel/stop")
+def stop_tunnel():
+    st = tunnel_manager.stop()
+    return {"ok": True, **st}
+
+
+@app.post("/api/tunnel/toggle")
+def toggle_tunnel():
+    port = int(os.environ.get("PORT", "8990"))
+    try:
+        if tunnel_manager.status == "running":
+            st = tunnel_manager.stop()
+        else:
+            st = tunnel_manager.start(port)
+        return {"ok": True, **st}
+    except Exception as e:
+        st = tunnel_manager.get_status()
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(e), **st})
 
 
 @app.get("/api/qr")
@@ -629,11 +673,29 @@ def verify_token_endpoint(
     }
 
 
+@app.on_event("startup")
+def on_app_startup():
+    if "--tunnel" in sys.argv or os.environ.get("AUTO_TUNNEL") in ("1", "true", "True"):
+        port = int(os.environ.get("PORT", "8990"))
+        def _auto_tunnel():
+            time.sleep(1.0)
+            try:
+                st = tunnel_manager.start(port)
+                print(f"[Tunnel] Active URL: {st.get('url')}")
+            except Exception as e:
+                print(f"[Tunnel] Auto-start failed: {e}")
+        threading.Thread(target=_auto_tunnel, daemon=True).start()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Meikova Auth Gateway & Universal SSO Service")
     parser.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"), help="Host to bind")
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8990")), help="Port to bind")
+    parser.add_argument("--tunnel", action="store_true", help="Auto-start Cloudflare Quick Tunnel")
     args = parser.parse_args()
+
+    if args.tunnel:
+        os.environ["AUTO_TUNNEL"] = "1"
 
     import uvicorn
     print(f"Meikova Auth Gateway starting on {args.host}:{args.port}")
