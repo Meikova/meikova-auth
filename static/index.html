@@ -1022,6 +1022,132 @@
     .hidden {
       display: none !important;
     }
+  
+    /* === CLOUDFLARE QUICK TUNNEL UI (IDENTITY GATEWAY BLUE #A6C5FF) === */
+    .btn-tunnel-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .btn-tunnel-pill.is-active {
+      border-color: rgba(166, 197, 255, 0.6) !important;
+      color: var(--accent, #A6C5FF) !important;
+      box-shadow: 0 0 14px -2px rgba(166, 197, 255, 0.4);
+    }
+    .status-dot.tunnel-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      display: inline-block;
+      background: #64748b;
+      transition: background 0.25s, box-shadow 0.25s;
+      flex-shrink: 0;
+    }
+    .tunnel-dot--idle {
+      background: #64748b !important;
+      box-shadow: none !important;
+    }
+    .tunnel-dot--starting {
+      background: #f59e0b !important;
+      box-shadow: 0 0 8px #f59e0b !important;
+      animation: pulse-tunnel 1.2s infinite;
+    }
+    .tunnel-dot--running {
+      background: var(--accent, #A6C5FF) !important;
+      box-shadow: 0 0 10px var(--accent, #A6C5FF) !important;
+    }
+    .tunnel-dot--failed {
+      background: #ef4444 !important;
+      box-shadow: 0 0 8px #ef4444 !important;
+    }
+    @keyframes pulse-tunnel {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+    .tunnel-header-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: rgba(59, 130, 246, 0.12);
+      color: var(--accent, #A6C5FF);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      border: 1px solid rgba(166, 197, 255, 0.25);
+    }
+    .tunnel-switch-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--card-border, rgba(255, 255, 255, 0.08));
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-bottom: 14px;
+    }
+    .btn-tunnel-action {
+      padding: 7px 16px;
+      font-weight: 600;
+      font-size: 12px;
+      border-radius: 9999px;
+      border: 1px solid var(--accent, #A6C5FF) !important;
+      color: var(--accent, #A6C5FF) !important;
+      cursor: pointer;
+      background: transparent;
+      transition: all 0.2s ease;
+    }
+    .btn-tunnel-action.is-running {
+      border-color: rgba(239, 68, 68, 0.5) !important;
+      color: #f87171 !important;
+    }
+    .tunnel-active-box {
+      background: rgba(59, 130, 246, 0.06);
+      border: 1px solid rgba(166, 197, 255, 0.25);
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-bottom: 14px;
+    }
+    .tunnel-field-label {
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+      color: var(--accent, #A6C5FF);
+      margin-bottom: 6px;
+      font-family: var(--font-mono);
+    }
+    .tunnel-url-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .tunnel-url-input {
+      flex: 1;
+      min-width: 0;
+      background: #04070D;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 8px;
+      padding: 8px 12px;
+      color: var(--accent, #A6C5FF);
+      font-size: 12px;
+      font-family: var(--font-mono);
+      appearance: none;
+      outline: none;
+    }
+    .tunnel-url-input:focus {
+      border-color: var(--accent, #A6C5FF);
+      box-shadow: 0 0 0 1px var(--accent, #A6C5FF), 0 0 12px -2px rgba(166, 197, 255, 0.4);
+    }
+    .tunnel-missing-box {
+      background: rgba(245, 158, 11, 0.06);
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    #modalTunnel {
+      backdrop-filter: blur(12px) !important;
+      -webkit-backdrop-filter: blur(12px) !important;
+    }
+
   </style>
 </head>
 <body>
@@ -1081,6 +1207,14 @@
             <line x1="12" y1="18" x2="12.01" y2="18"/>
           </svg>
           <span>Kết Nối Mobile</span>
+        </button>
+
+        <button type="button" class="btn-pill btn-tunnel-pill" id="btnNavTunnel" title="Mở cấu hình Cloudflare Tunnel">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>
+          </svg>
+          <span id="navTunnelText">Tunnel</span>
+          <span id="navTunnelDot" class="status-dot tunnel-dot tunnel-dot--idle" aria-hidden="true"></span>
         </button>
 
         <button type="button" class="btn-pill" id="btnInstallPwa" style="display:none;" onclick="triggerPwaInstall()">
@@ -1670,6 +1804,86 @@
   <!-- ===================================
        MODAL 1: KẾT NỐI MOBILE (QR CODE)
        =================================== -->
+  <!-- ===================================
+       MODAL: CLOUDFLARE QUICK TUNNEL
+       =================================== -->
+  <div class="modal-backdrop" id="modalTunnel" role="dialog" aria-modal="true" aria-labelledby="modalTunnelTitle">
+    <div class="modal-box" style="max-width: 460px;">
+      <div class="modal-header">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div class="tunnel-header-icon">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>
+            </svg>
+          </div>
+          <h3 class="modal-title" id="modalTunnelTitle" style="margin:0;">Cloudflare Tunnel</h3>
+        </div>
+        <button type="button" class="btn-close-modal" id="btnCloseTunnelModal" onclick="closeModal('modalTunnel')" aria-label="Đóng" title="Đóng">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Tunnel Switch Panel -->
+      <div class="tunnel-switch-card">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span id="tunnelStatusBadgeDot" class="status-dot tunnel-dot tunnel-dot--idle"></span>
+            <div>
+              <div id="tunnelStatusText" style="font-weight: 600; font-size: 13px; color: #fff;">Đang tắt</div>
+              <div id="tunnelStatusDetail" style="font-size: 11px; color: var(--danger);"></div>
+            </div>
+          </div>
+          <button id="btnToggleTunnel" class="btn-pill btn-tunnel-action" type="button">
+            <span id="btnToggleTunnelText">Bật</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Active Tunnel URL & QR Box -->
+      <div id="tunnelActiveBox" class="tunnel-active-box" style="display:none;">
+        <div class="tunnel-field-label">PUBLIC URL (WAN INGRESS)</div>
+        <div class="tunnel-url-row">
+          <input type="text" id="tunnelUrlInput" class="tunnel-url-input" readonly spellcheck="false" />
+          <button id="btnCopyTunnelUrl" class="btn-pill accent" type="button" title="Sao chép" style="padding: 6px 12px; font-size: 11.5px;">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <span>Chép</span>
+          </button>
+        </div>
+
+        <div style="display: flex; gap: 14px; align-items: center; margin-top: 12px; background: rgba(0,0,0,0.3); border: 1px solid var(--card-border); border-radius: 8px; padding: 10px 12px;">
+          <div style="width: 80px; height: 80px; background: #fff; border-radius: 6px; padding: 4px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+            <img id="tunnelQrImg" src="" alt="QR" style="width: 100%; height: 100%; object-fit: contain;" />
+          </div>
+          <div style="font-size: 11.5px; line-height: 1.4; color: var(--text-muted);">
+            <div style="color: var(--text); font-weight: 600; margin-bottom: 2px;">Quét mã di động</div>
+            <span>Kết nối từ xa qua Internet xuyên tường lửa</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Missing Cloudflared Box -->
+      <div id="tunnelNotInstalledBox" class="tunnel-missing-box" style="display:none;">
+        <div style="display:flex; gap:10px; align-items:flex-start;">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#f59e0b" stroke-width="2" style="flex-shrink:0; margin-top:2px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <div style="font-size: 11.5px; line-height: 1.4;">
+            <div style="color: #f59e0b; font-weight: 600; margin-bottom: 2px;">Chưa cài cloudflared</div>
+            <div style="margin-top:6px; padding: 6px 10px; display:flex; justify-content:space-between; align-items:center; background: rgba(0,0,0,0.4); border-radius: 6px;">
+              <code id="tunnelInstallCmd" style="font-size:10.5px; word-break:break-all; font-family:var(--font-mono);">winget install --id Cloudflare.cloudflared --exact --silent</code>
+              <button id="btnCopyTunnelInstallCmd" class="btn-pill" style="padding:2px 8px; font-size:10.5px; margin-left: 8px;" type="button">Chép</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:16px; display:flex; justify-content:flex-end;">
+        <button type="button" class="btn-pill" onclick="closeModal('modalTunnel')">Đóng Hộp Thoại</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-backdrop" id="modalMobileConnect">
     <div class="modal-box">
       <div class="modal-header">
@@ -2466,6 +2680,160 @@
 
     // Kickoff
     initApp();
+  
+    // ==========================================
+    // Cloudflare Quick Tunnel Controller (Meikova Auth)
+    // ==========================================
+    function initTunnelController() {
+      const btnNavTunnel = document.getElementById('btnNavTunnel');
+      const navTunnelDot = document.getElementById('navTunnelDot');
+      const modalTunnel = document.getElementById('modalTunnel');
+      const btnCloseTunnelModal = document.getElementById('btnCloseTunnelModal');
+      const btnToggleTunnel = document.getElementById('btnToggleTunnel');
+      const btnToggleTunnelText = document.getElementById('btnToggleTunnelText');
+      const tunnelStatusText = document.getElementById('tunnelStatusText');
+      const tunnelStatusDetail = document.getElementById('tunnelStatusDetail');
+      const tunnelStatusBadgeDot = document.getElementById('tunnelStatusBadgeDot');
+      const tunnelActiveBox = document.getElementById('tunnelActiveBox');
+      const tunnelUrlInput = document.getElementById('tunnelUrlInput');
+      const btnCopyTunnelUrl = document.getElementById('btnCopyTunnelUrl');
+      const tunnelQrImg = document.getElementById('tunnelQrImg');
+      const tunnelNotInstalledBox = document.getElementById('tunnelNotInstalledBox');
+      const tunnelInstallCmd = document.getElementById('tunnelInstallCmd');
+      const btnCopyTunnelInstallCmd = document.getElementById('btnCopyTunnelInstallCmd');
+
+      if (!btnNavTunnel || !modalTunnel) return;
+
+      let isOperating = false;
+
+      function renderTunnelStatus(st) {
+        if (!st) return;
+        if (st.running && st.url) {
+          btnNavTunnel.classList.add('is-active');
+          if (navTunnelDot) navTunnelDot.className = 'status-dot tunnel-dot tunnel-dot--running';
+          if (tunnelStatusBadgeDot) tunnelStatusBadgeDot.className = 'status-dot tunnel-dot tunnel-dot--running';
+          if (tunnelStatusText) tunnelStatusText.textContent = 'Đang chạy';
+          if (tunnelStatusDetail) tunnelStatusDetail.textContent = '';
+          if (btnToggleTunnelText) btnToggleTunnelText.textContent = 'Tắt';
+          if (btnToggleTunnel) {
+            btnToggleTunnel.classList.add('is-running');
+            btnToggleTunnel.disabled = false;
+          }
+          if (tunnelActiveBox) tunnelActiveBox.style.display = 'block';
+          if (tunnelUrlInput) tunnelUrlInput.value = st.url;
+          if (tunnelQrImg) tunnelQrImg.src = '/api/qr?data=' + encodeURIComponent(st.url);
+          if (tunnelNotInstalledBox) tunnelNotInstalledBox.style.display = 'none';
+        } else if (st.status === 'starting') {
+          if (navTunnelDot) navTunnelDot.className = 'status-dot tunnel-dot tunnel-dot--starting';
+          if (tunnelStatusBadgeDot) tunnelStatusBadgeDot.className = 'status-dot tunnel-dot tunnel-dot--starting';
+          if (tunnelStatusText) tunnelStatusText.textContent = 'Đang kết nối...';
+          if (tunnelStatusDetail) tunnelStatusDetail.textContent = '';
+          if (btnToggleTunnelText) btnToggleTunnelText.textContent = 'Đang bật...';
+          if (btnToggleTunnel) btnToggleTunnel.disabled = true;
+        } else {
+          btnNavTunnel.classList.remove('is-active');
+          if (navTunnelDot) navTunnelDot.className = 'status-dot tunnel-dot tunnel-dot--idle';
+          if (tunnelStatusBadgeDot) {
+            tunnelStatusBadgeDot.className = st.status === 'failed' ? 'status-dot tunnel-dot tunnel-dot--failed' : 'status-dot tunnel-dot tunnel-dot--idle';
+          }
+          if (tunnelStatusText) tunnelStatusText.textContent = st.status === 'failed' ? 'Lỗi' : 'Đang tắt';
+          if (tunnelStatusDetail) tunnelStatusDetail.textContent = st.error || '';
+          if (btnToggleTunnelText) btnToggleTunnelText.textContent = 'Bật';
+          if (btnToggleTunnel) {
+            btnToggleTunnel.classList.remove('is-running');
+            btnToggleTunnel.disabled = false;
+          }
+          if (tunnelActiveBox) tunnelActiveBox.style.display = 'none';
+
+          if (!st.installed && tunnelNotInstalledBox) {
+            tunnelNotInstalledBox.style.display = 'block';
+            if (tunnelInstallCmd && st.installCommand) tunnelInstallCmd.textContent = st.installCommand;
+          } else if (tunnelNotInstalledBox) {
+            tunnelNotInstalledBox.style.display = 'none';
+          }
+        }
+      }
+
+      async function fetchTunnelStatus() {
+        try {
+          const res = await fetch('/api/tunnel/status');
+          if (res.ok) {
+            const st = await res.json();
+            renderTunnelStatus(st);
+          }
+        } catch (_) {}
+      }
+
+      async function toggleTunnel() {
+        if (isOperating) return;
+        isOperating = true;
+        if (btnToggleTunnel) btnToggleTunnel.disabled = true;
+        if (btnToggleTunnelText) btnToggleTunnelText.textContent = 'Đang xử lý...';
+
+        try {
+          const res = await fetch('/api/tunnel/toggle', { method: 'POST' });
+          const data = await res.json();
+          if (res.ok && data.ok) {
+            renderTunnelStatus(data);
+            if (data.running) {
+              showToast('Cloudflare Tunnel đã bật thành công!', 'success');
+            } else {
+              showToast('Cloudflare Tunnel đã tắt.', 'info');
+            }
+          } else {
+            showToast(data.error || 'Thao tác Tunnel thất bại', 'error');
+            fetchTunnelStatus();
+          }
+        } catch (err) {
+          showToast('Lỗi mạng khi điều khiển Tunnel', 'error');
+          fetchTunnelStatus();
+        } finally {
+          isOperating = false;
+          if (btnToggleTunnel) btnToggleTunnel.disabled = false;
+        }
+      }
+
+      btnNavTunnel.addEventListener('click', () => {
+        fetchTunnelStatus();
+        openModal('modalTunnel');
+      });
+
+      modalTunnel.addEventListener('click', (e) => {
+        if (e.target === modalTunnel) closeModal('modalTunnel');
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modalTunnel.classList.contains('open')) {
+          closeModal('modalTunnel');
+        }
+      });
+
+      if (btnToggleTunnel) {
+        btnToggleTunnel.addEventListener('click', toggleTunnel);
+      }
+
+      if (btnCopyTunnelUrl && tunnelUrlInput) {
+        btnCopyTunnelUrl.addEventListener('click', () => {
+          if (!tunnelUrlInput.value) return;
+          copyText(tunnelUrlInput.value, 'Đã sao chép Public URL!');
+        });
+      }
+
+      if (btnCopyTunnelInstallCmd && tunnelInstallCmd) {
+        btnCopyTunnelInstallCmd.addEventListener('click', () => {
+          copyText(tunnelInstallCmd.textContent.trim(), 'Đã sao chép lệnh cài đặt!');
+        });
+      }
+
+      fetchTunnelStatus();
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initTunnelController);
+    } else {
+      initTunnelController();
+    }
+
   </script>
 </body>
 </html>
