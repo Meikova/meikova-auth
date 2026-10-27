@@ -19,6 +19,7 @@ import time
 import json
 import sqlite3
 import hashlib
+import hmac
 import secrets
 import base64
 import urllib.parse
@@ -86,6 +87,41 @@ def get_google_client_secret() -> str:
     return ""
 
 
+def generate_totp_secret() -> str:
+    """Sinh chuỗi secret ngẫu nhiên 160-bit (20 bytes) mã hóa Base32 cho TOTP RFC 6238."""
+    return base64.b32encode(secrets.token_bytes(20)).decode("utf-8").rstrip("=")
+
+
+def generate_totp_code(secret_b32: str, for_time: Optional[int] = None, digits: int = 6) -> str:
+    """Tính toán mã TOTP 6 chữ số theo chuẩn RFC 6238 dùng HMAC-SHA1 thuần Python stdlib."""
+    if for_time is None:
+        for_time = int(time.time())
+    clean_secret = secret_b32.strip().upper()
+    key = base64.b32decode(clean_secret + "=" * ((8 - len(clean_secret) % 8) % 8), casefold=True)
+    counter = for_time // 30
+    msg = counter.to_bytes(8, byteorder="big")
+    digest = hmac.new(key, msg, hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    code = (int.from_bytes(digest[offset:offset + 4], "big") & 0x7FFFFFFF) % (10 ** digits)
+    return str(code).zfill(digits)
+
+
+def verify_totp_code(secret_b32: str, code: str, window: int = 1) -> bool:
+    """Xác thực mã TOTP 6 số với cửa sổ dung sai trôi đồng hồ ±window (30s)."""
+    if not code or not secret_b32:
+        return False
+    clean_code = str(code).strip()
+    if len(clean_code) != 6 or not clean_code.isdigit():
+        return False
+    current_time = int(time.time())
+    for delta in range(-window, window + 1):
+        t = current_time + (delta * 30)
+        expected = generate_totp_code(secret_b32, for_time=t)
+        if hmac.compare_digest(clean_code, expected):
+            return True
+    return False
+
+
 class AuthGateway:
     def __init__(self, turso_url: str = AUTH_TURSO_URL, turso_token: str = AUTH_TURSO_TOKEN, local_db_path: Path = LOCAL_AUTH_DB):
         self.turso_url = turso_url
@@ -114,7 +150,13 @@ class AuthGateway:
                     role TEXT DEFAULT 'user',
                     status TEXT DEFAULT 'active',
                     created_at INTEGER,
-                    updated_at INTEGER
+                    updated_at INTEGER,
+                    totp_secret TEXT,
+                    totp_enabled INTEGER DEFAULT 0,
+                    totp_backup_codes TEXT,
+                    pin_hash TEXT,
+                    pin_salt TEXT,
+                    pin_enabled INTEGER DEFAULT 0
                 );
 
                 CREATE TABLE IF NOT EXISTS identities (
@@ -176,6 +218,20 @@ class AuthGateway:
                     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
                 );
             """)
+
+            for col, ctype in [
+                ("totp_secret", "TEXT"),
+                ("totp_enabled", "INTEGER DEFAULT 0"),
+                ("totp_backup_codes", "TEXT"),
+                ("pin_hash", "TEXT"),
+                ("pin_salt", "TEXT"),
+                ("pin_enabled", "INTEGER DEFAULT 0"),
+            ]:
+                try:
+                    conn.execute(f"ALTER TABLE users ADD COLUMN {col} {ctype}")
+                except Exception:
+                    pass
+
             conn.commit()
         finally:
             conn.close()
@@ -325,7 +381,7 @@ class AuthGateway:
             return None
 
         row = self.fetchone(
-            "SELECT id, username, email, display_name, password_hash, salt, role FROM users "
+            "SELECT id, username, email, display_name, password_hash, salt, role, totp_enabled FROM users "
             "WHERE LOWER(username) = ? OR LOWER(email) = ?",
             (clean_id, clean_id)
         )
@@ -339,9 +395,33 @@ class AuthGateway:
         expected_hash = self._row_val(row, "password_hash", 4)
         salt = self._row_val(row, "salt", 5)
         role = self._row_val(row, "role", 6) or "user"
+        totp_enabled = bool(self._row_val(row, "totp_enabled", 7, 0))
 
         if not self.verify_password_hash(password, salt, expected_hash):
             return None
+
+        if totp_enabled:
+            temp_token = issue_universal_token(
+                user_id=user_id,
+                username=username,
+                email=email,
+                display_name=display_name or username,
+                role=role,
+                expires_in_sec=300,
+                scope="2fa_pending"
+            )
+            return {
+                "status": "require_totp",
+                "require_totp": True,
+                "temp_token": temp_token,
+                "user": {
+                    "id": user_id,
+                    "username": username,
+                    "email": email,
+                    "display_name": display_name or username,
+                    "role": role
+                }
+            }
 
         session_id = self.create_session(
             user_id=user_id,
@@ -376,7 +456,7 @@ class AuthGateway:
 
     def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
         row = self.fetchone(
-            "SELECT id, email, username, display_name, avatar_url, role, status, created_at FROM users WHERE id = ?",
+            "SELECT id, email, username, display_name, avatar_url, role, status, created_at, totp_enabled, pin_enabled FROM users WHERE id = ?",
             (user_id,)
         )
         if not row:
@@ -390,6 +470,8 @@ class AuthGateway:
             "role": self._row_val(row, "role", 5) or "user",
             "status": self._row_val(row, "status", 6) or "active",
             "created_at": self._row_val(row, "created_at", 7),
+            "totp_enabled": bool(self._row_val(row, "totp_enabled", 8, 0)),
+            "pin_enabled": bool(self._row_val(row, "pin_enabled", 9, 0)),
         }
 
     def update_profile(self, user_id: str, display_name: Optional[str] = None, email: Optional[str] = None) -> Dict[str, Any]:
@@ -680,6 +762,282 @@ class AuthGateway:
                 "created_at": self._row_val(r, "created_at", 5),
             })
         return logs
+
+    # === 2FA TOTP (RFC 6238) Engine ===
+
+    def setup_totp(self, user_id: str) -> Dict[str, Any]:
+        user = self.get_user_by_id(user_id)
+        if not user:
+            raise ValueError("Không tìm thấy tài khoản người dùng.")
+
+        secret = generate_totp_secret()
+        username = user.get("username", "user")
+        issuer = "Meikova Auth"
+        encoded_issuer = urllib.parse.quote(issuer)
+        encoded_label = urllib.parse.quote(f"{issuer}:{username}")
+        otpauth_url = f"otpauth://totp/{encoded_label}?secret={secret}&issuer={encoded_issuer}&algorithm=SHA1&digits=6&period=30"
+
+        return {
+            "secret": secret,
+            "otpauth_url": otpauth_url,
+            "qr_data": otpauth_url
+        }
+
+    def enable_totp(self, user_id: str, secret: str, code: str) -> Dict[str, Any]:
+        clean_code = str(code or "").strip()
+        clean_secret = str(secret or "").strip().upper()
+        if not clean_code or not clean_secret:
+            raise ValueError("Mã xác thực và secret không được để trống.")
+
+        if not verify_totp_code(clean_secret, clean_code):
+            raise ValueError("Mã xác thực 6 số không chính xác hoặc đã hết hạn.")
+
+        backup_codes = [secrets.token_hex(4).upper() for _ in range(8)]
+
+        self.execute(
+            "UPDATE users SET totp_secret = ?, totp_enabled = 1, totp_backup_codes = ? WHERE id = ?",
+            (clean_secret, json.dumps(backup_codes), user_id)
+        )
+
+        self.log_audit(user_id, "AUTH_TOTP_ENABLED", details={"backup_codes_count": len(backup_codes)})
+
+        return {
+            "success": True,
+            "backup_codes": backup_codes
+        }
+
+    def verify_totp_login(
+        self,
+        user_id: str,
+        code: str,
+        device_name: Optional[str] = None,
+        device_type: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        ip_address: Optional[str] = None
+    ) -> Dict[str, Any]:
+        clean_code = str(code or "").strip().upper()
+        if not clean_code:
+            raise ValueError("Mã xác thực không được để trống.")
+
+        row = self.fetchone(
+            "SELECT id, username, email, display_name, role, totp_secret, totp_backup_codes, totp_enabled FROM users WHERE id = ?",
+            (user_id,)
+        )
+        if not row:
+            raise ValueError("Không tìm thấy tài khoản người dùng.")
+
+        user_id = self._row_val(row, "id", 0)
+        username = self._row_val(row, "username", 1)
+        email = self._row_val(row, "email", 2)
+        display_name = self._row_val(row, "display_name", 3)
+        role = self._row_val(row, "role", 4) or "user"
+        totp_secret = self._row_val(row, "totp_secret", 5)
+        backup_codes_raw = self._row_val(row, "totp_backup_codes", 6)
+        totp_enabled = bool(self._row_val(row, "totp_enabled", 7, 0))
+
+        if not totp_enabled or not totp_secret:
+            raise ValueError("Tài khoản chưa kích hoạt bảo mật 2FA.")
+
+        is_valid = False
+        used_backup_code = False
+
+        if clean_code.isdigit() and len(clean_code) == 6:
+            is_valid = verify_totp_code(totp_secret, clean_code)
+
+        if not is_valid and backup_codes_raw:
+            try:
+                backup_codes = json.loads(backup_codes_raw)
+                if isinstance(backup_codes, list) and clean_code in backup_codes:
+                    is_valid = True
+                    used_backup_code = True
+                    backup_codes.remove(clean_code)
+                    self.execute(
+                        "UPDATE users SET totp_backup_codes = ? WHERE id = ?",
+                        (json.dumps(backup_codes), user_id)
+                    )
+            except Exception:
+                pass
+
+        if not is_valid:
+            self.log_audit(user_id, "AUTH_TOTP_FAILED", ip_address=ip_address, user_agent=user_agent)
+            raise ValueError("Mã xác thực TOTP hoặc mã dự phòng không chính xác.")
+
+        session_id = self.create_session(
+            user_id=user_id,
+            device_name=device_name or "Trình duyệt Web",
+            device_type=device_type or "web",
+            user_agent=user_agent,
+            ip_address=ip_address
+        )
+
+        sso_token = issue_universal_token(
+            user_id=user_id,
+            username=username,
+            email=email,
+            display_name=display_name or username,
+            role=role
+        )
+
+        audit_details = {"session_id": session_id, "method": "backup_code" if used_backup_code else "totp"}
+        self.log_audit(user_id, "AUTH_LOGIN_TOTP", ip_address=ip_address, user_agent=user_agent, details=audit_details)
+
+        return {
+            "status": "ok",
+            "token": sso_token,
+            "session_id": session_id,
+            "used_backup_code": used_backup_code,
+            "user": {
+                "id": user_id,
+                "username": username,
+                "email": email,
+                "display_name": display_name or username,
+                "role": role
+            }
+        }
+
+    def disable_totp(self, user_id: str, password: Optional[str] = None, code: Optional[str] = None) -> bool:
+        row = self.fetchone(
+            "SELECT password_hash, salt, totp_secret, totp_enabled FROM users WHERE id = ?",
+            (user_id,)
+        )
+        if not row:
+            raise ValueError("Không tìm thấy người dùng.")
+
+        expected_hash = self._row_val(row, "password_hash", 0)
+        salt = self._row_val(row, "salt", 1)
+        totp_secret = self._row_val(row, "totp_secret", 2)
+
+        verified = False
+        if password and expected_hash and salt:
+            verified = self.verify_password_hash(password, salt, expected_hash)
+        if not verified and code and totp_secret:
+            verified = verify_totp_code(totp_secret, str(code).strip())
+
+        if not verified:
+            raise ValueError("Mật khẩu hoặc mã xác thực không đúng để tắt 2FA.")
+
+        self.execute(
+            "UPDATE users SET totp_enabled = 0, totp_secret = NULL, totp_backup_codes = NULL WHERE id = ?",
+            (user_id,)
+        )
+
+        self.log_audit(user_id, "AUTH_TOTP_DISABLED")
+        return True
+
+    # === Security PIN Engine (6-Digit App Lock & Step-Up Auth) ===
+
+    def setup_pin(self, user_id: str, pin: str, password: str) -> bool:
+        clean_pin = str(pin or "").strip()
+        if len(clean_pin) != 6 or not clean_pin.isdigit():
+            raise ValueError("Mã PIN phải bao gồm đúng 6 chữ số.")
+
+        row = self.fetchone("SELECT password_hash, salt FROM users WHERE id = ?", (user_id,))
+        if not row:
+            raise ValueError("Không tìm thấy tài khoản người dùng.")
+
+        expected_hash = self._row_val(row, "password_hash", 0)
+        salt = self._row_val(row, "salt", 1)
+
+        if expected_hash and salt:
+            if not self.verify_password_hash(password, salt, expected_hash):
+                raise ValueError("Mật khẩu tài khoản không chính xác.")
+
+        pin_salt = secrets.token_hex(16)
+        pin_hash = self.hash_password(clean_pin, pin_salt)
+
+        self.execute(
+            "UPDATE users SET pin_hash = ?, pin_salt = ?, pin_enabled = 1 WHERE id = ?",
+            (pin_hash, pin_salt, user_id)
+        )
+
+        self.log_audit(user_id, "AUTH_PIN_SETUP")
+        return True
+
+    def verify_pin(self, user_id: str, pin: str) -> bool:
+        clean_pin = str(pin or "").strip()
+        if len(clean_pin) != 6 or not clean_pin.isdigit():
+            raise ValueError("Mã PIN phải gồm đúng 6 chữ số.")
+
+        row = self.fetchone("SELECT pin_hash, pin_salt, pin_enabled FROM users WHERE id = ?", (user_id,))
+        if not row:
+            raise ValueError("Không tìm thấy tài khoản người dùng.")
+
+        pin_hash = self._row_val(row, "pin_hash", 0)
+        pin_salt = self._row_val(row, "pin_salt", 1)
+        pin_enabled = bool(self._row_val(row, "pin_enabled", 2, 0))
+
+        if not pin_enabled or not pin_hash or not pin_salt:
+            raise ValueError("Chưa thiết lập mã PIN cho tài khoản.")
+
+        if not self.verify_password_hash(clean_pin, pin_salt, pin_hash):
+            self.log_audit(user_id, "AUTH_PIN_VERIFY_FAILED")
+            raise ValueError("Mã PIN không chính xác.")
+
+        self.log_audit(user_id, "AUTH_PIN_VERIFIED")
+        return True
+
+    def change_pin(self, user_id: str, new_pin: str, old_pin: Optional[str] = None, password: Optional[str] = None) -> bool:
+        clean_new = str(new_pin or "").strip()
+        if len(clean_new) != 6 or not clean_new.isdigit():
+            raise ValueError("Mã PIN mới phải bao gồm đúng 6 chữ số.")
+
+        row = self.fetchone("SELECT password_hash, salt, pin_hash, pin_salt, pin_enabled FROM users WHERE id = ?", (user_id,))
+        if not row:
+            raise ValueError("Không tìm thấy tài khoản người dùng.")
+
+        pw_hash = self._row_val(row, "password_hash", 0)
+        pw_salt = self._row_val(row, "salt", 1)
+        curr_pin_hash = self._row_val(row, "pin_hash", 2)
+        curr_pin_salt = self._row_val(row, "pin_salt", 3)
+
+        verified = False
+        if old_pin and curr_pin_hash and curr_pin_salt:
+            verified = self.verify_password_hash(str(old_pin).strip(), curr_pin_salt, curr_pin_hash)
+        if not verified and password and pw_hash and pw_salt:
+            verified = self.verify_password_hash(password, pw_salt, pw_hash)
+
+        if not verified:
+            raise ValueError("Mã PIN hiện tại hoặc mật khẩu không chính xác.")
+
+        pin_salt = secrets.token_hex(16)
+        pin_hash = self.hash_password(clean_new, pin_salt)
+
+        self.execute(
+            "UPDATE users SET pin_hash = ?, pin_salt = ?, pin_enabled = 1 WHERE id = ?",
+            (pin_hash, pin_salt, user_id)
+        )
+
+        self.log_audit(user_id, "AUTH_PIN_CHANGED")
+        return True
+
+    def disable_pin(self, user_id: str, password: str) -> bool:
+        row = self.fetchone("SELECT password_hash, salt FROM users WHERE id = ?", (user_id,))
+        if not row:
+            raise ValueError("Không tìm thấy tài khoản người dùng.")
+
+        pw_hash = self._row_val(row, "password_hash", 0)
+        pw_salt = self._row_val(row, "salt", 1)
+
+        if pw_hash and pw_salt:
+            if not self.verify_password_hash(password, pw_salt, pw_hash):
+                raise ValueError("Mật khẩu tài khoản không chính xác.")
+
+        self.execute(
+            "UPDATE users SET pin_hash = NULL, pin_salt = NULL, pin_enabled = 0 WHERE id = ?",
+            (user_id,)
+        )
+
+        self.log_audit(user_id, "AUTH_PIN_DISABLED")
+        return True
+
+    def get_security_status(self, user_id: str) -> Dict[str, Any]:
+        row = self.fetchone("SELECT totp_enabled, pin_enabled FROM users WHERE id = ?", (user_id,))
+        if not row:
+            return {"totp_enabled": False, "pin_enabled": False}
+        return {
+            "totp_enabled": bool(self._row_val(row, "totp_enabled", 0, 0)),
+            "pin_enabled": bool(self._row_val(row, "pin_enabled", 1, 0))
+        }
 
     @staticmethod
     def get_host_info(request_host: Optional[str] = None, port: int = 8990) -> Dict[str, Any]:

@@ -120,7 +120,7 @@ pip install -r requirements.txt
 2. **Chạy bộ kiểm thử tự động xác nhận chất lượng**:
 
 ```bash
-# Chạy bộ test 40 điểm kiểm định Auth Gateway:
+# Chạy bộ test 52 điểm kiểm định Auth Gateway (bao gồm 2FA TOTP & Mã PIN 6 số):
 python tests/test_auth_server.py
 
 # Chạy kiểm thử tuân thủ tài sản thương hiệu:

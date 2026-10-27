@@ -48,6 +48,7 @@ if str(AUTH_ROOT) not in sys.path:
     sys.path.insert(0, str(AUTH_ROOT))
 
 from core.universal_sso import issue_universal_token, verify_universal_token, _b64url_encode
+from core.auth_gateway import generate_totp_code
 
 PASS_COUNT = 0
 FAIL_COUNT = 0
@@ -352,6 +353,107 @@ def run_tests():
     # 26. Missing Token Rejection
     code, _ = http_request(f"{base_url}/api/auth/me")
     log_step("Missing Token Rejection", code == 401, f"Code: {code}")
+
+    # 27. Security Status (Initial state)
+    code, sec_status = http_request(f"{base_url}/api/auth/security/status", headers=auth_headers)
+    log_step("GET /api/auth/security/status", code == 200 and sec_status.get("totp_enabled") is False and sec_status.get("pin_enabled") is False)
+
+    # 28. TOTP 2FA Setup
+    code, totp_setup = http_request(f"{base_url}/api/auth/totp/setup", method="POST", headers=auth_headers)
+    totp_secret = totp_setup.get("secret")
+    log_step("POST /api/auth/totp/setup", code == 200 and bool(totp_secret), f"Secret: {totp_secret[:8]}...")
+
+    # 29. TOTP 2FA Enable
+    valid_code = generate_totp_code(totp_secret)
+    code, totp_enable = http_request(
+        f"{base_url}/api/auth/totp/enable",
+        method="POST",
+        headers=auth_headers,
+        data={"secret": totp_secret, "code": valid_code}
+    )
+    backup_codes = totp_enable.get("backup_codes", [])
+    log_step("POST /api/auth/totp/enable", code == 200 and len(backup_codes) == 8, f"Status: {code}, Backup codes: {len(backup_codes)}, Body: {totp_enable}")
+
+    # 30. Login with TOTP Enabled -> Requires 2FA Step
+    code, totp_login_res = http_request(
+        f"{base_url}/api/auth/login",
+        method="POST",
+        data={"username": test_username, "password": new_password}
+    )
+    temp_token = totp_login_res.get("temp_token")
+    log_step("POST /api/auth/login (with 2FA Enabled)", code == 200 and totp_login_res.get("require_totp") is True and bool(temp_token), "Gated by 2FA")
+
+    # 31. Verify TOTP with Invalid Code -> Rejected
+    code, _ = http_request(
+        f"{base_url}/api/auth/totp/verify",
+        method="POST",
+        data={"temp_token": temp_token, "code": "000000"}
+    )
+    log_step("POST /api/auth/totp/verify (Invalid Code)", code == 401, f"Rejected with {code}")
+
+    # 32. Verify TOTP with Valid Code -> Success and Token Issued
+    valid_login_code = generate_totp_code(totp_secret)
+    code, verified_login = http_request(
+        f"{base_url}/api/auth/totp/verify",
+        method="POST",
+        data={"temp_token": temp_token, "code": valid_login_code}
+    )
+    log_step("POST /api/auth/totp/verify (Valid Code)", code == 200 and bool(verified_login.get("token")), "Universal Token Issued")
+
+    # 33. Disable TOTP
+    code, dis_res = http_request(
+        f"{base_url}/api/auth/totp/disable",
+        method="POST",
+        headers=auth_headers,
+        data={"password": new_password}
+    )
+    log_step("POST /api/auth/totp/disable", code == 200, f"Status: {code}, Body: {dis_res}")
+
+    # 34. Setup 6-Digit Security PIN
+    test_pin = "852963"
+    code, pin_setup_res = http_request(
+        f"{base_url}/api/auth/pin/setup",
+        method="POST",
+        headers=auth_headers,
+        data={"pin": test_pin, "password": new_password}
+    )
+    log_step("POST /api/auth/pin/setup", code == 200 and pin_setup_res.get("success") is True, f"PIN: {test_pin}")
+
+    # 35. Verify Security PIN (Wrong vs Correct)
+    code, _ = http_request(
+        f"{base_url}/api/auth/pin/verify",
+        method="POST",
+        headers=auth_headers,
+        data={"pin": "111111"}
+    )
+    log_step("POST /api/auth/pin/verify (Wrong PIN)", code == 401, f"Rejected with {code}")
+
+    code, pin_verify_res = http_request(
+        f"{base_url}/api/auth/pin/verify",
+        method="POST",
+        headers=auth_headers,
+        data={"pin": test_pin}
+    )
+    log_step("POST /api/auth/pin/verify (Correct PIN)", code == 200 and pin_verify_res.get("verified") is True, "PIN Verified")
+
+    # 36. Change Security PIN
+    new_pin = "369258"
+    code, pin_change_res = http_request(
+        f"{base_url}/api/auth/pin/change",
+        method="POST",
+        headers=auth_headers,
+        data={"old_pin": test_pin, "new_pin": new_pin}
+    )
+    log_step("POST /api/auth/pin/change", code == 200 and pin_change_res.get("success") is True, f"New PIN: {new_pin}")
+
+    # 37. Disable Security PIN
+    code, pin_disable_res = http_request(
+        f"{base_url}/api/auth/pin/disable",
+        method="POST",
+        headers=auth_headers,
+        data={"password": new_password}
+    )
+    log_step("POST /api/auth/pin/disable", code == 200 and pin_disable_res.get("success") is True, "PIN Disabled")
 
     # Shutdown server
     server.should_exit = True

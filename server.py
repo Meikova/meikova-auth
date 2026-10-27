@@ -101,6 +101,40 @@ class CreateTokenRequest(BaseModel):
     ttl_days: Optional[int] = Field(90, ge=1, le=365, description="Token validity in days")
 
 
+class TotpEnableRequest(BaseModel):
+    secret: str = Field(..., description="Base32 TOTP secret")
+    code: str = Field(..., min_length=6, max_length=6, description="6-digit verification code")
+
+
+class TotpVerifyLoginRequest(BaseModel):
+    temp_token: str = Field(..., description="Temporary 2FA token from login step")
+    code: str = Field(..., description="6-digit TOTP or 8-char recovery code")
+
+
+class TotpDisableRequest(BaseModel):
+    password: Optional[str] = Field(None, description="Account password")
+    code: Optional[str] = Field(None, description="Current 6-digit TOTP code")
+
+
+class PinSetupRequest(BaseModel):
+    pin: str = Field(..., min_length=6, max_length=6, description="6-digit numeric PIN")
+    password: str = Field(..., description="Current account password")
+
+
+class PinVerifyRequest(BaseModel):
+    pin: str = Field(..., min_length=6, max_length=6, description="6-digit numeric PIN")
+
+
+class PinChangeRequest(BaseModel):
+    new_pin: str = Field(..., min_length=6, max_length=6, description="New 6-digit numeric PIN")
+    old_pin: Optional[str] = Field(None, min_length=6, max_length=6, description="Current 6-digit numeric PIN")
+    password: Optional[str] = Field(None, description="Current account password")
+
+
+class PinDisableRequest(BaseModel):
+    password: str = Field(..., description="Current account password")
+
+
 # Helpers
 def _client_telemetry(request: Request):
     forwarded = request.headers.get("x-forwarded-for")
@@ -121,7 +155,7 @@ def _require_auth_user(authorization: Optional[str] = Header(None)) -> Dict[str,
 
     token = authorization[len("Bearer "):].strip()
     payload = verify_universal_token(token)
-    if not payload:
+    if not payload or payload.get("scope") == "2fa_pending":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token không hợp lệ hoặc đã hết hạn."
@@ -396,7 +430,10 @@ def login_user(req: LoginRequest, request: Request):
             detail={"code": "AUTH_INVALID_CREDENTIALS", "message": "Sai tên đăng nhập, email hoặc mật khẩu."}
         )
 
-    result["code"] = "AUTH_LOGIN_SUCCESS"
+    if result.get("require_totp"):
+        result["code"] = "AUTH_REQUIRE_TOTP"
+    else:
+        result["code"] = "AUTH_LOGIN_SUCCESS"
     return result
 
 
@@ -629,6 +666,141 @@ def get_audit_endpoint(limit: int = Query(20, ge=1, le=100), authorization: Opti
         "code": "AUTH_AUDIT_RETRIEVED",
         "logs": logs
     }
+
+
+# === 2FA TOTP Endpoints ===
+
+@app.post("/api/auth/totp/setup")
+def setup_totp_endpoint(authorization: Optional[str] = Header(None)):
+    user = _require_auth_user(authorization)
+    try:
+        data = gateway_instance.setup_totp(user["id"])
+        data["code"] = "AUTH_TOTP_SETUP_SUCCESS"
+        data["qr_url"] = f"/api/qr?data={urllib.parse.quote(data['otpauth_url'])}"
+        return data
+    except Exception as ex:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "AUTH_TOTP_SETUP_FAILED", "message": str(ex)}
+        )
+
+
+@app.post("/api/auth/totp/enable")
+def enable_totp_endpoint(req: TotpEnableRequest, authorization: Optional[str] = Header(None)):
+    user = _require_auth_user(authorization)
+    try:
+        data = gateway_instance.enable_totp(user["id"], req.secret, req.code)
+        data["code"] = "AUTH_TOTP_ENABLED"
+        return data
+    except ValueError as ex:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "AUTH_TOTP_INVALID", "message": str(ex)}
+        )
+
+
+@app.post("/api/auth/totp/verify")
+def verify_totp_login_endpoint(req: TotpVerifyLoginRequest, request: Request):
+    payload = verify_universal_token(req.temp_token)
+    if not payload or payload.get("scope") != "2fa_pending":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "AUTH_TOKEN_EXPIRED", "message": "Phiên 2FA đã hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại."}
+        )
+
+    user_id = payload.get("sub")
+    ip, ua, d_name, d_type = _client_telemetry(request)
+    try:
+        result = gateway_instance.verify_totp_login(
+            user_id=user_id,
+            code=req.code,
+            device_name=d_name,
+            device_type=d_type,
+            user_agent=ua,
+            ip_address=ip
+        )
+        result["code"] = "AUTH_LOGIN_SUCCESS"
+        return result
+    except ValueError as ex:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "AUTH_TOTP_INVALID", "message": str(ex)}
+        )
+
+
+@app.post("/api/auth/totp/disable")
+def disable_totp_endpoint(req: TotpDisableRequest, authorization: Optional[str] = Header(None)):
+    user = _require_auth_user(authorization)
+    try:
+        gateway_instance.disable_totp(user["id"], password=req.password, code=req.code)
+        return {"code": "AUTH_TOTP_DISABLED", "success": True}
+    except ValueError as ex:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "AUTH_DISABLE_FAILED", "message": str(ex)}
+        )
+
+
+# === Security PIN Endpoints ===
+
+@app.post("/api/auth/pin/setup")
+def setup_pin_endpoint(req: PinSetupRequest, authorization: Optional[str] = Header(None)):
+    user = _require_auth_user(authorization)
+    try:
+        gateway_instance.setup_pin(user["id"], req.pin, req.password)
+        return {"code": "AUTH_PIN_SETUP_SUCCESS", "success": True}
+    except ValueError as ex:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "AUTH_PIN_INVALID", "message": str(ex)}
+        )
+
+
+@app.post("/api/auth/pin/verify")
+def verify_pin_endpoint(req: PinVerifyRequest, authorization: Optional[str] = Header(None)):
+    user = _require_auth_user(authorization)
+    try:
+        gateway_instance.verify_pin(user["id"], req.pin)
+        return {"code": "AUTH_PIN_VERIFIED", "success": True, "verified": True}
+    except ValueError as ex:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "AUTH_PIN_INVALID", "message": str(ex)}
+        )
+
+
+@app.post("/api/auth/pin/change")
+def change_pin_endpoint(req: PinChangeRequest, authorization: Optional[str] = Header(None)):
+    user = _require_auth_user(authorization)
+    try:
+        gateway_instance.change_pin(user["id"], req.new_pin, old_pin=req.old_pin, password=req.password)
+        return {"code": "AUTH_PIN_CHANGED", "success": True}
+    except ValueError as ex:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "AUTH_PIN_CHANGE_FAILED", "message": str(ex)}
+        )
+
+
+@app.post("/api/auth/pin/disable")
+def disable_pin_endpoint(req: PinDisableRequest, authorization: Optional[str] = Header(None)):
+    user = _require_auth_user(authorization)
+    try:
+        gateway_instance.disable_pin(user["id"], req.password)
+        return {"code": "AUTH_PIN_DISABLED", "success": True}
+    except ValueError as ex:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "AUTH_PIN_DISABLE_FAILED", "message": str(ex)}
+        )
+
+
+@app.get("/api/auth/security/status")
+def security_status_endpoint(authorization: Optional[str] = Header(None)):
+    user = _require_auth_user(authorization)
+    status_data = gateway_instance.get_security_status(user["id"])
+    status_data["code"] = "AUTH_SECURITY_STATUS"
+    return status_data
 
 
 @app.api_route("/api/auth/verify", methods=["GET", "POST"])

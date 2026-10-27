@@ -82,6 +82,7 @@ class UniversalSSO:
         display_name: Optional[str] = None,
         role: str = "user",
         expires_in_sec: int = 30 * 86400,
+        scope: Optional[str] = None,
     ) -> str:
         """Issues an Ed25519-signed universal JWT token valid for 30 days."""
         if not self.private_key_pem:
@@ -99,6 +100,8 @@ class UniversalSSO:
             "iat": now,
             "exp": now + expires_in_sec,
         }
+        if scope:
+            payload["scope"] = str(scope)
 
         h_b64 = _b64url_encode(json.dumps(header, separators=(",", ":")).encode("utf-8"))
         p_b64 = _b64url_encode(json.dumps(payload, separators=(",", ":")).encode("utf-8"))

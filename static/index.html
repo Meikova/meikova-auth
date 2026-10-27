@@ -1149,6 +1149,124 @@
       -webkit-backdrop-filter: blur(12px) !important;
     }
 
+
+    /* App Lock Screen & PIN Inputs (Ambient Dark) */
+    .app-lock-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(7, 13, 23, 0.96);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      z-index: 100000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .lock-card {
+      width: 100%;
+      max-width: 420px;
+      background: #0B1220;
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 32px 24px;
+      text-align: center;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+      animation: fadeIn 0.2s ease-out;
+    }
+    .lock-brand {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      margin-bottom: 16px;
+      color: var(--accent);
+    }
+    .lock-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .lock-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 20px;
+    }
+    .lock-user-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--card-surface);
+      border: 1px solid var(--card-border);
+      padding: 6px 14px;
+      border-radius: 9999px;
+      margin-bottom: 24px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    .pin-inputs-row {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      margin: 12px 0 20px;
+    }
+    .pin-box {
+      width: 44px;
+      height: 52px;
+      text-align: center;
+      font-family: var(--font-mono);
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--accent);
+      background: #070D17;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      outline: none;
+      transition: all 0.15s ease;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+    .pin-box:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px var(--accent), 0 0 12px var(--accent-glow);
+      background: #0C1527;
+    }
+    .totp-qr-frame {
+      width: 160px;
+      height: 160px;
+      background: #fff;
+      border-radius: 10px;
+      padding: 8px;
+      margin: 12px auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .totp-qr-frame img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    .backup-codes-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+      background: rgba(0,0,0,0.3);
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--card-border);
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--accent);
+      letter-spacing: 1px;
+      margin: 14px 0;
+    }
+
   </style>
 </head>
 <body>
@@ -1210,7 +1328,14 @@
           <span>Kết Nối Mobile</span>
         </button>
 
-        <button type="button" class="btn-pill btn-tunnel-pill" id="btnNavTunnel" title="Mở cấu hình Cloudflare Tunnel">
+        <button type="button" class="btn-pill" id="btnQuickLock" title="Khóa Trạm Làm Việc (Ctrl+L)" onclick="lockScreen()">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          <span>Khóa Trạm</span>
+        </button>
+        <button type="button" class="btn-pill btn-tunnel-pill" id="btnNavTunnel"  title="Mở cấu hình Cloudflare Tunnel">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/>
           </svg>
@@ -1505,6 +1630,74 @@
                 <span>Cập Nhật Mật Khẩu</span>
               </button>
             </form>
+          </div>
+
+          <!-- 2FA TOTP Card -->
+          <div class="instrument-card">
+            <div class="card-header-clean">
+              <div class="card-title-group">
+                <div class="card-icon-badge">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    <path d="M9 12l2 2 4-4"/>
+                  </svg>
+                </div>
+                <div>
+                  <h3 class="card-title">Xác Thực Hai Bước (2FA TOTP)</h3>
+                  <p class="card-subtitle">Bảo vệ đăng nhập qua Google Authenticator / Authy (RFC 6238)</p>
+                </div>
+              </div>
+              <span class="status-badge" id="totpStatusBadge">Đang kiểm tra...</span>
+            </div>
+            <p style="font-size:12px; color:var(--text-muted); line-height:1.5; margin-bottom:16px;">
+              Khi kích hoạt, mọi lần đăng nhập trên thiết bị mới sẽ bắt buộc nhập mã xác thực một lần 6 chữ số từ điện thoại của bạn.
+            </p>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+              <button type="button" class="btn-pill accent" id="btnEnableTotp" onclick="openTotpSetup()">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="12" y1="8" x2="12" y2="16"/>
+                  <line x1="8" y1="12" x2="16" y2="12"/>
+                </svg>
+                <span>Thiết Lập 2FA</span>
+              </button>
+              <button type="button" class="btn-pill" id="btnDisableTotp" style="display:none; color:var(--danger);" onclick="openDisableTotp()">
+                <span>Tắt 2FA</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 6-Digit Security PIN Card -->
+          <div class="instrument-card">
+            <div class="card-header-clean">
+              <div class="card-title-group">
+                <div class="card-icon-badge">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                  </svg>
+                </div>
+                <div>
+                  <h3 class="card-title">Mã PIN Khóa Trạm & Thao Tác</h3>
+                  <p class="card-subtitle">Mã PIN 6 số giúp khóa nhanh màn hình và bảo vệ thao tác nhạy cảm</p>
+                </div>
+              </div>
+              <span class="status-badge" id="pinStatusBadge">Đang kiểm tra...</span>
+            </div>
+            <p style="font-size:12px; color:var(--text-muted); line-height:1.5; margin-bottom:16px;">
+              Khóa tức thì giao diện làm việc bằng phím tắt <kbd style="background:rgba(255,255,255,0.1); padding:2px 6px; border-radius:4px; font-family:var(--font-mono); font-size:11px;">Ctrl + L</kbd> hoặc tự động khóa sau khi không hoạt động.
+            </p>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+              <button type="button" class="btn-pill accent" id="btnSetupPin" onclick="openPinSetup()">
+                <span>Thiết Lập Mã PIN</span>
+              </button>
+              <button type="button" class="btn-pill" id="btnChangePin" style="display:none;" onclick="openPinChange()">
+                <span>Đổi Mã PIN</span>
+              </button>
+              <button type="button" class="btn-pill" id="btnDisablePin" style="display:none; color:var(--danger);" onclick="confirmDisablePin()">
+                <span>Tắt PIN</span>
+              </button>
+            </div>
           </div>
 
           <!-- Linked Identities (Google) -->
@@ -1996,6 +2189,155 @@
   </div>
 
   <!-- Toast Notification Container -->
+  
+  <!-- App Lock Overlay -->
+  <div id="appLockOverlay" class="app-lock-overlay" style="display:none;">
+    <div class="lock-card">
+      <div class="lock-brand">
+        <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+      </div>
+      <h2 class="lock-title">Trạm Làm Việc Đang Khóa</h2>
+      <p class="lock-subtitle">Nhập mã PIN 6 số để mở khóa giao diện</p>
+      <div class="lock-user-chip">
+        <div class="user-avatar-sm" id="lockUserAvatar">M</div>
+        <span id="lockUserName">Người dùng</span>
+      </div>
+      <form id="formUnlockPin" onsubmit="handleUnlockPin(event)">
+        <div class="pin-inputs-row" id="lockPinInputsRow">
+          <input class="pin-box" type="password" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+          <input class="pin-box" type="password" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+          <input class="pin-box" type="password" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+          <input class="pin-box" type="password" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+          <input class="pin-box" type="password" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+          <input class="pin-box" type="password" maxlength="1" inputmode="numeric" pattern="[0-9]*" autocomplete="off">
+        </div>
+        <button type="submit" class="btn-pill accent" id="btnUnlockSubmit" style="width:100%; justify-content:center; padding:10px;">
+          <span>Mở Khóa Trạm</span>
+        </button>
+      </form>
+      <button type="button" style="margin-top:16px; font-size:12px; color:var(--text-muted); background:none; border:none; cursor:pointer;" onclick="logout()">
+        Đăng xuất tài khoản
+      </button>
+    </div>
+  </div>
+
+  <!-- Modal TOTP Setup -->
+  <div class="modal-backdrop" id="modalTotpSetup">
+    <div class="modal-box" style="max-width:460px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Thiết Lập Xác Thực 2FA</h3>
+        <button class="btn-close-modal" onclick="closeModal('modalTotpSetup')">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <p style="font-size:12px; color:var(--text-muted); line-height:1.4;">
+        1. Dùng ứng dụng Google Authenticator hoặc Authy quét mã QR bên dưới:
+      </p>
+      <div class="totp-qr-frame">
+        <img id="totpQrImage" src="" alt="2FA QR">
+      </div>
+      <div style="font-size:11px; text-align:center; color:var(--text-dim); margin-bottom:12px;">
+        Hoặc nhập khóa bí mật: <code id="totpSecretText" style="color:var(--accent); font-family:var(--font-mono); font-weight:600;"></code>
+        <button type="button" class="btn-pill" style="padding:2px 8px; font-size:10.5px; margin-left:6px;" onclick="copyText(document.getElementById('totpSecretText').textContent)">Chép</button>
+      </div>
+      <form onsubmit="handleConfirmTotp(event)">
+        <div class="form-group">
+          <label class="form-label" for="totpVerifyCode">2. Nhập mã 6 chữ số từ ứng dụng để kích hoạt:</label>
+          <input class="form-input" id="totpVerifyCode" type="text" placeholder="123456" maxlength="6" required style="text-align:center; font-family:var(--font-mono); font-size:18px; letter-spacing:4px;">
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
+          <button type="button" class="btn-pill" onclick="closeModal('modalTotpSetup')">Hủy</button>
+          <button type="submit" class="btn-pill accent" id="btnConfirmTotpSubmit">Xác Nhận Kích Hoạt</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal TOTP Backup Codes -->
+  <div class="modal-backdrop" id="modalTotpBackup">
+    <div class="modal-box" style="max-width:440px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Mã Sao Lưu Khôi Phục (Recovery Codes)</h3>
+        <button class="btn-close-modal" onclick="closeModal('modalTotpBackup')">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <p style="font-size:12px; color:var(--text-muted); line-height:1.4;">
+        Lưu 8 mã dự phòng này ở nơi an toàn. Mỗi mã chỉ dùng được một lần để đăng nhập nếu bạn bị mất điện thoại:
+      </p>
+      <div class="backup-codes-grid" id="backupCodesGrid">
+        <!-- Rendered by JS -->
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
+        <button type="button" class="btn-pill" onclick="copyAllBackupCodes()">Sao Chép Tất Cả</button>
+        <button type="button" class="btn-pill accent" onclick="closeModal('modalTotpBackup')">Tôi Đã Lưu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal PIN Setup -->
+  <div class="modal-backdrop" id="modalPinSetup">
+    <div class="modal-box" style="max-width:420px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Thiết Lập Mã PIN 6 Số</h3>
+        <button class="btn-close-modal" onclick="closeModal('modalPinSetup')">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <form onsubmit="handleConfirmPinSetup(event)">
+        <div class="form-group">
+          <label class="form-label" for="pinInputNew">Mã PIN mới (6 chữ số)</label>
+          <input class="form-input" id="pinInputNew" type="password" maxlength="6" inputmode="numeric" pattern="[0-9]{6}" placeholder="Nhập đúng 6 chữ số" required style="font-family:var(--font-mono); letter-spacing:4px; text-align:center;">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="pinInputConfirm">Xác nhận mã PIN</label>
+          <input class="form-input" id="pinInputConfirm" type="password" maxlength="6" inputmode="numeric" pattern="[0-9]{6}" placeholder="Nhập lại mã PIN 6 số" required style="font-family:var(--font-mono); letter-spacing:4px; text-align:center;">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="pinInputPassword">Mật khẩu tài khoản</label>
+          <input class="form-input" id="pinInputPassword" type="password" placeholder="Nhập mật khẩu tài khoản" required autocomplete="current-password">
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
+          <button type="button" class="btn-pill" onclick="closeModal('modalPinSetup')">Hủy</button>
+          <button type="submit" class="btn-pill accent" id="btnSubmitPinSetup">Lưu Mã PIN</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal PIN Change -->
+  <div class="modal-backdrop" id="modalPinChange">
+    <div class="modal-box" style="max-width:420px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Đổi Mã PIN</h3>
+        <button class="btn-close-modal" onclick="closeModal('modalPinChange')">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <form onsubmit="handleConfirmPinChange(event)">
+        <div class="form-group">
+          <label class="form-label" for="pinOldVal">Mã PIN cũ (hoặc để trống nếu dùng mật khẩu)</label>
+          <input class="form-input" id="pinOldVal" type="password" maxlength="6" inputmode="numeric" placeholder="6 số PIN hiện tại" style="font-family:var(--font-mono); letter-spacing:4px; text-align:center;">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="pinChangeNew">Mã PIN mới (6 chữ số)</label>
+          <input class="form-input" id="pinChangeNew" type="password" maxlength="6" inputmode="numeric" pattern="[0-9]{6}" placeholder="Nhập 6 số mới" required style="font-family:var(--font-mono); letter-spacing:4px; text-align:center;">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="pinChangeConfirm">Xác nhận mã PIN mới</label>
+          <input class="form-input" id="pinChangeConfirm" type="password" maxlength="6" inputmode="numeric" pattern="[0-9]{6}" placeholder="Nhập lại 6 số mới" required style="font-family:var(--font-mono); letter-spacing:4px; text-align:center;">
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">
+          <button type="button" class="btn-pill" onclick="closeModal('modalPinChange')">Hủy</button>
+          <button type="submit" class="btn-pill accent" id="btnSubmitPinChange">Cập Nhật PIN</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div class="toast-container" id="toastContainer"></div>
 
   <script>
@@ -2134,7 +2476,7 @@
 
       if (tabId === 'sessions') loadSessions();
       if (tabId === 'tokens') { loadPats(); loadEcosystemApps(); loadJwks(); }
-      if (tabId === 'security') { loadIdentities(); loadAuditLogs(); }
+      if (tabId === 'security') { loadIdentities(); loadAuditLogs(); loadSecurityStatus(); }
     }
 
     // Auth Validation & Initial Fetch
@@ -2834,6 +3176,368 @@
     } else {
       initTunnelController();
     }
+
+
+    // === 2FA TOTP & Security PIN Management ===
+    let securityStatus = { totp_enabled: false, pin_enabled: false };
+    let currentTotpSetupSecret = null;
+    let savedBackupCodes = [];
+    let isAppLocked = false;
+    let idleTimer = null;
+
+    async function loadSecurityStatus() {
+      try {
+        const res = await fetch('/api/auth/security/status', {
+          headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        if (!res.ok) return;
+        securityStatus = await res.json();
+        renderSecurityUI();
+      } catch (_) {}
+    }
+
+    function renderSecurityUI() {
+      const totpBadge = document.getElementById('totpStatusBadge');
+      const btnEnableTotp = document.getElementById('btnEnableTotp');
+      const btnDisableTotp = document.getElementById('btnDisableTotp');
+
+      if (totpBadge) {
+        if (securityStatus.totp_enabled) {
+          totpBadge.className = 'status-badge active';
+          totpBadge.textContent = 'ĐANG BẢO VỆ';
+          btnEnableTotp.style.display = 'none';
+          btnDisableTotp.style.display = 'inline-flex';
+        } else {
+          totpBadge.className = 'status-badge';
+          totpBadge.textContent = 'CHƯA KÍCH HOẠT';
+          btnEnableTotp.style.display = 'inline-flex';
+          btnDisableTotp.style.display = 'none';
+        }
+      }
+
+      const pinBadge = document.getElementById('pinStatusBadge');
+      const btnSetupPin = document.getElementById('btnSetupPin');
+      const btnChangePin = document.getElementById('btnChangePin');
+      const btnDisablePin = document.getElementById('btnDisablePin');
+
+      if (pinBadge) {
+        if (securityStatus.pin_enabled) {
+          pinBadge.className = 'status-badge active';
+          pinBadge.textContent = 'ĐÃ THIẾT LẬP';
+          btnSetupPin.style.display = 'none';
+          btnChangePin.style.display = 'inline-flex';
+          btnDisablePin.style.display = 'inline-flex';
+        } else {
+          pinBadge.className = 'status-badge';
+          pinBadge.textContent = 'CHƯA THIẾT LẬP';
+          btnSetupPin.style.display = 'inline-flex';
+          btnChangePin.style.display = 'none';
+          btnDisablePin.style.display = 'none';
+        }
+      }
+    }
+
+    async function openTotpSetup() {
+      try {
+        const res = await fetch('/api/auth/totp/setup', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${authToken}` }
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(data.detail?.message || 'Không thể tạo mã bí mật 2FA', 'error');
+          return;
+        }
+        currentTotpSetupSecret = data.secret;
+        document.getElementById('totpSecretText').textContent = data.secret;
+        document.getElementById('totpQrImage').src = data.qr_url;
+        document.getElementById('totpVerifyCode').value = '';
+        openModal('modalTotpSetup');
+      } catch (e) {
+        showToast('Lỗi kết nối máy chủ', 'error');
+      }
+    }
+
+    async function handleConfirmTotp(e) {
+      e.preventDefault();
+      const code = document.getElementById('totpVerifyCode').value.trim();
+      const btn = document.getElementById('btnConfirmTotpSubmit');
+      btn.disabled = true;
+
+      try {
+        const res = await fetch('/api/auth/totp/enable', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${authToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ secret: currentTotpSetupSecret, code })
+        });
+        const data = await res.json();
+        btn.disabled = false;
+        if (!res.ok) {
+          showToast(data.detail?.message || 'Mã xác thực không đúng', 'error');
+          return;
+        }
+
+        closeModal('modalTotpSetup');
+        savedBackupCodes = data.backup_codes || [];
+        renderBackupCodes(savedBackupCodes);
+        openModal('modalTotpBackup');
+        showToast('Kích hoạt xác thực 2FA thành công!', 'success');
+        loadSecurityStatus();
+      } catch (err) {
+        btn.disabled = false;
+        showToast('Lỗi khi kích hoạt 2FA', 'error');
+      }
+    }
+
+    function renderBackupCodes(codes) {
+      const container = document.getElementById('backupCodesGrid');
+      if (!container) return;
+      container.innerHTML = codes.map(c => `<div>${c}</div>`).join('');
+    }
+
+    function copyAllBackupCodes() {
+      if (!savedBackupCodes.length) return;
+      copyText(savedBackupCodes.join('\n'), 'Đã sao chép 8 mã khôi phục!');
+    }
+
+    async function openDisableTotp() {
+      const pwd = prompt('Nhập mật khẩu tài khoản để tắt bảo mật 2FA:');
+      if (!pwd) return;
+
+      try {
+        const res = await fetch('/api/auth/totp/disable', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${authToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ password: pwd })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(data.detail?.message || 'Không thể tắt 2FA', 'error');
+          return;
+        }
+        showToast('Đã tắt bảo mật 2FA thành công', 'success');
+        loadSecurityStatus();
+      } catch (e) {
+        showToast('Lỗi kết nối máy chủ', 'error');
+      }
+    }
+
+    function openPinSetup() {
+      document.getElementById('pinInputNew').value = '';
+      document.getElementById('pinInputConfirm').value = '';
+      document.getElementById('pinInputPassword').value = '';
+      openModal('modalPinSetup');
+    }
+
+    async function handleConfirmPinSetup(e) {
+      e.preventDefault();
+      const pin = document.getElementById('pinInputNew').value.trim();
+      const confirm = document.getElementById('pinInputConfirm').value.trim();
+      const password = document.getElementById('pinInputPassword').value;
+
+      if (pin !== confirm) {
+        showToast('Mã PIN xác nhận không khớp', 'error');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/auth/pin/setup', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${authToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ pin, password })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(data.detail?.message || 'Thiết lập PIN thất bại', 'error');
+          return;
+        }
+        closeModal('modalPinSetup');
+        showToast('Thiết lập mã PIN 6 số thành công!', 'success');
+        loadSecurityStatus();
+      } catch (err) {
+        showToast('Lỗi kết nối máy chủ', 'error');
+      }
+    }
+
+    function openPinChange() {
+      document.getElementById('pinOldVal').value = '';
+      document.getElementById('pinChangeNew').value = '';
+      document.getElementById('pinChangeConfirm').value = '';
+      openModal('modalPinChange');
+    }
+
+    async function handleConfirmPinChange(e) {
+      e.preventDefault();
+      const old_pin = document.getElementById('pinOldVal').value.trim() || null;
+      const new_pin = document.getElementById('pinChangeNew').value.trim();
+      const confirm = document.getElementById('pinChangeConfirm').value.trim();
+
+      if (new_pin !== confirm) {
+        showToast('Mã PIN mới không khớp', 'error');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/auth/pin/change', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${authToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ old_pin, new_pin })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(data.detail?.message || 'Đổi PIN thất bại', 'error');
+          return;
+        }
+        closeModal('modalPinChange');
+        showToast('Cập nhật mã PIN thành công!', 'success');
+      } catch (err) {
+        showToast('Lỗi kết nối máy chủ', 'error');
+      }
+    }
+
+    async function confirmDisablePin() {
+      const pwd = prompt('Nhập mật khẩu tài khoản để tắt mã PIN:');
+      if (!pwd) return;
+
+      try {
+        const res = await fetch('/api/auth/pin/disable', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${authToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ password: pwd })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          showToast(data.detail?.message || 'Tắt PIN thất bại', 'error');
+          return;
+        }
+        showToast('Đã tắt mã PIN', 'success');
+        loadSecurityStatus();
+      } catch (e) {
+        showToast('Lỗi kết nối máy chủ', 'error');
+      }
+    }
+
+    // === App Screen Lock Engine ===
+    function lockScreen() {
+      isAppLocked = true;
+      sessionStorage.setItem('meikova_screen_locked', '1');
+      const overlay = document.getElementById('appLockOverlay');
+      if (!overlay) return;
+      overlay.style.display = 'flex';
+
+      if (currentUser) {
+        document.getElementById('lockUserName').textContent = currentUser.display_name || currentUser.username;
+        const initial = (currentUser.display_name || currentUser.username || 'M').charAt(0).toUpperCase();
+        document.getElementById('lockUserAvatar').textContent = initial;
+      }
+
+      // Reset pin boxes
+      const boxes = document.querySelectorAll('#lockPinInputsRow .pin-box');
+      boxes.forEach(b => b.value = '');
+      if (boxes.length > 0) boxes[0].focus();
+    }
+
+    function unlockScreen() {
+      isAppLocked = false;
+      sessionStorage.removeItem('meikova_screen_locked');
+      const overlay = document.getElementById('appLockOverlay');
+      if (overlay) overlay.style.display = 'none';
+      showToast('Đã mở khóa trạm làm việc', 'success');
+    }
+
+    async function handleUnlockPin(e) {
+      if (e) e.preventDefault();
+      const boxes = document.querySelectorAll('#lockPinInputsRow .pin-box');
+      let pin = '';
+      boxes.forEach(b => pin += b.value.trim());
+
+      if (pin.length !== 6) {
+        showToast('Vui lòng nhập đủ 6 chữ số PIN', 'error');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/auth/pin/verify', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${authToken}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ pin })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.verified) {
+          showToast(data.detail?.message || 'Mã PIN không chính xác', 'error');
+          boxes.forEach(b => b.value = '');
+          boxes[0].focus();
+          return;
+        }
+        unlockScreen();
+      } catch (err) {
+        showToast('Lỗi kiểm thực mã PIN', 'error');
+      }
+    }
+
+    // PIN Box auto-advance listeners
+    function setupPinBoxNavigation() {
+      const boxes = document.querySelectorAll('#lockPinInputsRow .pin-box');
+      boxes.forEach((box, idx) => {
+        box.addEventListener('input', (e) => {
+          const val = box.value.replace(/[^0-9]/g, '');
+          box.value = val ? val[0] : '';
+          if (box.value && idx < boxes.length - 1) {
+            boxes[idx + 1].focus();
+          }
+          // Auto submit when all 6 entered
+          const allFilled = Array.from(boxes).every(b => b.value.length === 1);
+          if (allFilled) {
+            handleUnlockPin();
+          }
+        });
+        box.addEventListener('keydown', (e) => {
+          if (e.key === 'Backspace' && !box.value && idx > 0) {
+            boxes[idx - 1].focus();
+          }
+        });
+      });
+    }
+
+    // Idle timer for automatic app lock (10 minutes)
+    function resetIdleTimer() {
+      if (idleTimer) clearTimeout(idleTimer);
+      if (securityStatus.pin_enabled && !isAppLocked) {
+        idleTimer = setTimeout(() => {
+          lockScreen();
+        }, 10 * 60 * 1000);
+      }
+    }
+
+    ['mousemove', 'keydown', 'touchstart'].forEach(evt => {
+      window.addEventListener(evt, resetIdleTimer, { passive: true });
+    });
+
+    // Keyboard shortcut Ctrl+L to lock screen
+    window.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l') {
+        e.preventDefault();
+        lockScreen();
+      }
+    });
 
   </script>
 </body>

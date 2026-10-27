@@ -682,6 +682,26 @@
           </button>
         </form>
 
+        <!-- 2FA TOTP Form -->
+        <form id="formTotp" class="hidden" onsubmit="handleTotpVerify(event)">
+          <div style="text-align: center; margin-bottom: 12px;">
+            <div style="font-size: 13px; font-weight: 600; color: var(--text);">Xác Thực Hai Bước (2FA)</div>
+            <p style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px;">Nhập mã 6 chữ số từ ứng dụng Google Authenticator hoặc mã dự phòng</p>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="totpInput">Mã xác thực hoặc Mã dự phòng</label>
+            <div class="input-wrap">
+              <input class="form-input" id="totpInput" type="text" placeholder="123456 hoặc A1B2C3D4" required autocomplete="one-time-code" style="text-align:center; font-family:var(--font-mono); font-size:17px; letter-spacing:3px;" maxlength="12">
+            </div>
+          </div>
+          <button class="btn-submit" id="btnTotpSubmit" type="submit">
+            <span>Xác nhận & Hoàn tất</span>
+          </button>
+          <button type="button" class="btn-link" style="width:100%; margin-top:10px; font-size:12px; color:var(--text-muted); text-align:center; background:none; border:none; cursor:pointer;" onclick="cancelTotp()">
+            &larr; Quay lại đăng nhập
+          </button>
+        </form>
+
         <!-- Register Form -->
         <form id="formRegister" class="hidden" onsubmit="handleRegister(event)">
           <div class="form-group">
@@ -1076,6 +1096,12 @@
           body: JSON.stringify({ username, password })
         });
         const data = await res.json();
+        if (data.require_totp || data.status === 'require_totp') {
+          showTotpView(data.temp_token);
+          btn.disabled = false;
+          btn.innerHTML = '<span>Xác nhận Đăng nhập</span>';
+          return;
+        }
         if (!res.ok || data.status !== 'ok') {
           showError(data.detail || data.message || 'Tên đăng nhập hoặc mật khẩu không chính xác.');
           btn.disabled = false;
@@ -1148,6 +1174,59 @@
 
     // Initial View Mount
     renderView();
+
+    let currentTempToken = null;
+
+    function showTotpView(tempToken) {
+      currentTempToken = tempToken;
+      document.getElementById('formLogin').classList.add('hidden');
+      document.getElementById('formRegister').classList.add('hidden');
+      const tabDeck = document.querySelector('.tab-deck');
+      if (tabDeck) tabDeck.classList.add('hidden');
+      const f = document.getElementById('formTotp');
+      f.classList.remove('hidden');
+      const inp = document.getElementById('totpInput');
+      inp.value = '';
+      setTimeout(() => inp.focus(), 100);
+    }
+
+    function cancelTotp() {
+      currentTempToken = null;
+      document.getElementById('formTotp').classList.add('hidden');
+      const tabDeck = document.querySelector('.tab-deck');
+      if (tabDeck) tabDeck.classList.remove('hidden');
+      document.getElementById('formLogin').classList.remove('hidden');
+    }
+
+    async function handleTotpVerify(e) {
+      e.preventDefault();
+      hideAlerts();
+      const btn = document.getElementById('btnTotpSubmit');
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spinner"></div><span>Đang thẩm định 2FA...</span>';
+      const code = document.getElementById('totpInput').value.trim();
+
+      try {
+        const res = await fetch('/api/auth/totp/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ temp_token: currentTempToken, code })
+        });
+        const data = await res.json();
+        if (!res.ok || data.status !== 'ok') {
+          showError(data.detail?.message || data.detail || 'Mã xác thực 2FA không chính xác hoặc đã hết hạn.');
+          btn.disabled = false;
+          btn.innerHTML = '<span>Xác nhận & Hoàn tất</span>';
+          return;
+        }
+        dispatchAuthSuccess(data);
+      } catch (err) {
+        showError('Lỗi kết nối máy chủ xác thực.');
+        btn.disabled = false;
+        btn.innerHTML = '<span>Xác nhận & Hoàn tất</span>';
+      }
+    }
+
   </script>
 </body>
 </html>
