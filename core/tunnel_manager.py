@@ -104,7 +104,7 @@ class CloudflaredTunnelManager:
                     creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
 
                 self.process = subprocess.Popen(
-                    [bin_path, "tunnel", "--url", f"http://127.0.0.1:{port}"],
+                    [bin_path, "tunnel", "--protocol", "http2", "--edge-ip-version", "auto", "--no-autoupdate", "--url", f"http://127.0.0.1:{port}"],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
