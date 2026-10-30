@@ -331,10 +331,18 @@ def get_tunnel_status():
 
 
 @app.post("/api/tunnel/start")
-def start_tunnel():
+async def start_tunnel(request: Request = None):
     port = int(os.environ.get("PORT", "8990"))
+    ip_version = "auto"
+    if request:
+        try:
+            body = await request.json()
+            if isinstance(body, dict):
+                ip_version = body.get("ipVersion") or request.query_params.get("ipVersion", "auto")
+        except Exception:
+            ip_version = request.query_params.get("ipVersion", "auto")
     try:
-        st = tunnel_manager.start(port)
+        st = tunnel_manager.start(port, ip_version=ip_version)
         return {"ok": True, **st}
     except Exception as e:
         st = tunnel_manager.get_status()
@@ -348,13 +356,21 @@ def stop_tunnel():
 
 
 @app.post("/api/tunnel/toggle")
-def toggle_tunnel():
+async def toggle_tunnel(request: Request = None):
     port = int(os.environ.get("PORT", "8990"))
+    ip_version = "auto"
+    if request:
+        try:
+            body = await request.json()
+            if isinstance(body, dict):
+                ip_version = body.get("ipVersion") or request.query_params.get("ipVersion", "auto")
+        except Exception:
+            ip_version = request.query_params.get("ipVersion", "auto")
     try:
         if tunnel_manager.status == "running":
             st = tunnel_manager.stop()
         else:
-            st = tunnel_manager.start(port)
+            st = tunnel_manager.start(port, ip_version=ip_version)
         return {"ok": True, **st}
     except Exception as e:
         st = tunnel_manager.get_status()

@@ -2056,6 +2056,25 @@
             <span>Kết nối từ xa qua Internet xuyên tường lửa</span>
           </div>
         </div>
+
+        <!-- Edge Server & Latency Diagnostics -->
+        <div id="tunnelEdgeBox" class="tunnel-edge-badge" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; padding: 8px 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--card-border, rgba(255, 255, 255, 0.08)); border-radius: 8px; font-size: 0.75rem;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--accent); flex-shrink: 0;">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z"></path>
+            </svg>
+            <span><span>Trạm Edge:</span> <strong id="tunnelEdgeColoText" class="mono" style="color: var(--text-bright, #F8FAFC);">---</strong></span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="status-dot" id="tunnelLatencyDot" style="width: 6px; height: 6px; background: var(--accent); border-radius: 50%;"></span>
+            <span id="tunnelLatencyText" class="mono" style="color: var(--text-muted, rgba(255, 255, 255, 0.6));">-- ms</span>
+          </div>
+        </div>
+        <div id="tunnelRoutingHint" style="margin-top: 8px; font-size: 0.7rem; color: var(--text-muted, rgba(255, 255, 255, 0.4)); line-height: 1.4;">
+          <span>Định tuyến tự động qua Anycast BGP của nhà mạng. Với độ trễ &lt;10ms trong nước, hãy dùng mạng LAN hoặc VPS Relay nội địa.</span>
+        </div>
       </div>
 
       <!-- Missing Cloudflared Box -->
@@ -3044,6 +3063,26 @@
       const tunnelNotInstalledBox = document.getElementById('tunnelNotInstalledBox');
       const tunnelInstallCmd = document.getElementById('tunnelInstallCmd');
       const btnCopyTunnelInstallCmd = document.getElementById('btnCopyTunnelInstallCmd');
+      const tunnelEdgeBox = document.getElementById('tunnelEdgeBox');
+      const tunnelEdgeColoText = document.getElementById('tunnelEdgeColoText');
+      const tunnelLatencyText = document.getElementById('tunnelLatencyText');
+      const tunnelLatencyDot = document.getElementById('tunnelLatencyDot');
+      const tunnelRoutingHint = document.getElementById('tunnelRoutingHint');
+      const tunnelEdgeBox = document.getElementById('tunnelEdgeBox');
+      const tunnelEdgeColoText = document.getElementById('tunnelEdgeColoText');
+      const tunnelLatencyText = document.getElementById('tunnelLatencyText');
+      const tunnelLatencyDot = document.getElementById('tunnelLatencyDot');
+      const tunnelRoutingHint = document.getElementById('tunnelRoutingHint');
+      const tunnelEdgeBox = document.getElementById('tunnelEdgeBox');
+      const tunnelEdgeColoText = document.getElementById('tunnelEdgeColoText');
+      const tunnelLatencyText = document.getElementById('tunnelLatencyText');
+      const tunnelLatencyDot = document.getElementById('tunnelLatencyDot');
+      const tunnelRoutingHint = document.getElementById('tunnelRoutingHint');
+      const tunnelEdgeBox = document.getElementById('tunnelEdgeBox');
+      const tunnelEdgeColoText = document.getElementById('tunnelEdgeColoText');
+      const tunnelLatencyText = document.getElementById('tunnelLatencyText');
+      const tunnelLatencyDot = document.getElementById('tunnelLatencyDot');
+      const tunnelRoutingHint = document.getElementById('tunnelRoutingHint');
 
       if (!btnNavTunnel || !modalTunnel) return;
 
@@ -3066,6 +3105,142 @@
           if (tunnelUrlInput) tunnelUrlInput.value = st.url;
           if (tunnelQrImg) tunnelQrImg.src = '/api/qr?data=' + encodeURIComponent(st.url);
           if (tunnelNotInstalledBox) tunnelNotInstalledBox.style.display = 'none';
+          if (tunnelEdgeBox) tunnelEdgeBox.style.display = 'flex';
+          if (tunnelRoutingHint) tunnelRoutingHint.style.display = 'block';
+          if (tunnelEdgeColoText) {
+            if (st.edgeLocation && st.edgeColo) {
+              tunnelEdgeColoText.textContent = `${st.edgeLocation} (${st.edgeColo})`;
+            } else if (st.edgeColo) {
+              tunnelEdgeColoText.textContent = st.edgeColo;
+            } else {
+              tunnelEdgeColoText.textContent = 'Đang nhận diện...';
+            }
+          }
+          if (tunnelLatencyText) {
+            if (typeof st.latencyMs === 'number' && st.latencyMs > 0) {
+              tunnelLatencyText.textContent = `${st.latencyMs} ms`;
+              if (tunnelLatencyDot) {
+                if (st.latencyMs < 60) {
+                  tunnelLatencyDot.style.background = '#22C55E';
+                } else if (st.latencyMs < 120) {
+                  tunnelLatencyDot.style.background = '#F59E0B';
+                } else {
+                  tunnelLatencyDot.style.background = '#EF4444';
+                }
+              }
+            } else {
+              tunnelLatencyText.textContent = '-- ms';
+              if (tunnelLatencyDot) tunnelLatencyDot.style.background = 'var(--accent)';
+            }
+          }
+          if (!st.edgeColo || !st.latencyMs) {
+            clearTimeout(window._tunnelColoRetryTimer);
+            window._tunnelColoRetryTimer = setTimeout(fetchTunnelStatus, 800);
+          } else {
+            clearTimeout(window._tunnelColoRetryTimer);
+          }
+          if (tunnelEdgeBox) tunnelEdgeBox.style.display = 'flex';
+          if (tunnelRoutingHint) tunnelRoutingHint.style.display = 'block';
+          if (tunnelEdgeColoText) {
+            if (st.edgeLocation && st.edgeColo) {
+              tunnelEdgeColoText.textContent = `${st.edgeLocation} (${st.edgeColo})`;
+            } else if (st.edgeColo) {
+              tunnelEdgeColoText.textContent = st.edgeColo;
+            } else {
+              tunnelEdgeColoText.textContent = 'Đang nhận diện...';
+            }
+          }
+          if (tunnelLatencyText) {
+            if (typeof st.latencyMs === 'number' && st.latencyMs > 0) {
+              tunnelLatencyText.textContent = `${st.latencyMs} ms`;
+              if (tunnelLatencyDot) {
+                if (st.latencyMs < 60) {
+                  tunnelLatencyDot.style.background = '#22C55E';
+                } else if (st.latencyMs < 120) {
+                  tunnelLatencyDot.style.background = '#F59E0B';
+                } else {
+                  tunnelLatencyDot.style.background = '#EF4444';
+                }
+              }
+            } else {
+              tunnelLatencyText.textContent = '-- ms';
+              if (tunnelLatencyDot) tunnelLatencyDot.style.background = 'var(--accent)';
+            }
+          }
+          if (!st.edgeColo || !st.latencyMs) {
+            clearTimeout(window._tunnelColoRetryTimer);
+            window._tunnelColoRetryTimer = setTimeout(fetchTunnelStatus, 800);
+          } else {
+            clearTimeout(window._tunnelColoRetryTimer);
+          }
+          if (tunnelEdgeBox) tunnelEdgeBox.style.display = 'flex';
+          if (tunnelRoutingHint) tunnelRoutingHint.style.display = 'block';
+          if (tunnelEdgeColoText) {
+            if (st.edgeLocation && st.edgeColo) {
+              tunnelEdgeColoText.textContent = `${st.edgeLocation} (${st.edgeColo})`;
+            } else if (st.edgeColo) {
+              tunnelEdgeColoText.textContent = st.edgeColo;
+            } else {
+              tunnelEdgeColoText.textContent = 'Đang nhận diện...';
+            }
+          }
+          if (tunnelLatencyText) {
+            if (typeof st.latencyMs === 'number' && st.latencyMs > 0) {
+              tunnelLatencyText.textContent = `${st.latencyMs} ms`;
+              if (tunnelLatencyDot) {
+                if (st.latencyMs < 60) {
+                  tunnelLatencyDot.style.background = '#22C55E';
+                } else if (st.latencyMs < 120) {
+                  tunnelLatencyDot.style.background = '#F59E0B';
+                } else {
+                  tunnelLatencyDot.style.background = '#EF4444';
+                }
+              }
+            } else {
+              tunnelLatencyText.textContent = '-- ms';
+              if (tunnelLatencyDot) tunnelLatencyDot.style.background = 'var(--accent)';
+            }
+          }
+          if (!st.edgeColo || !st.latencyMs) {
+            clearTimeout(window._tunnelColoRetryTimer);
+            window._tunnelColoRetryTimer = setTimeout(fetchTunnelStatus, 800);
+          } else {
+            clearTimeout(window._tunnelColoRetryTimer);
+          }
+          if (tunnelEdgeBox) tunnelEdgeBox.style.display = 'flex';
+          if (tunnelRoutingHint) tunnelRoutingHint.style.display = 'block';
+          if (tunnelEdgeColoText) {
+            if (st.edgeLocation && st.edgeColo) {
+              tunnelEdgeColoText.textContent = `${st.edgeLocation} (${st.edgeColo})`;
+            } else if (st.edgeColo) {
+              tunnelEdgeColoText.textContent = st.edgeColo;
+            } else {
+              tunnelEdgeColoText.textContent = 'Đang nhận diện...';
+            }
+          }
+          if (tunnelLatencyText) {
+            if (typeof st.latencyMs === 'number' && st.latencyMs > 0) {
+              tunnelLatencyText.textContent = `${st.latencyMs} ms`;
+              if (tunnelLatencyDot) {
+                if (st.latencyMs < 60) {
+                  tunnelLatencyDot.style.background = '#22C55E';
+                } else if (st.latencyMs < 120) {
+                  tunnelLatencyDot.style.background = '#F59E0B';
+                } else {
+                  tunnelLatencyDot.style.background = '#EF4444';
+                }
+              }
+            } else {
+              tunnelLatencyText.textContent = '-- ms';
+              if (tunnelLatencyDot) tunnelLatencyDot.style.background = 'var(--accent)';
+            }
+          }
+          if (!st.edgeColo || !st.latencyMs) {
+            clearTimeout(window._tunnelColoRetryTimer);
+            window._tunnelColoRetryTimer = setTimeout(fetchTunnelStatus, 800);
+          } else {
+            clearTimeout(window._tunnelColoRetryTimer);
+          }
         } else if (st.status === 'starting') {
           if (navTunnelDot) navTunnelDot.className = 'status-dot tunnel-dot tunnel-dot--starting';
           if (tunnelStatusBadgeDot) tunnelStatusBadgeDot.className = 'status-dot tunnel-dot tunnel-dot--starting';
@@ -3087,6 +3262,26 @@
             btnToggleTunnel.disabled = false;
           }
           if (tunnelActiveBox) tunnelActiveBox.style.display = 'none';
+          if (tunnelEdgeBox) tunnelEdgeBox.style.display = 'none';
+          if (tunnelRoutingHint) tunnelRoutingHint.style.display = 'none';
+          if (tunnelEdgeColoText) tunnelEdgeColoText.textContent = '---';
+          if (tunnelLatencyText) tunnelLatencyText.textContent = '-- ms';
+          clearTimeout(window._tunnelColoRetryTimer);
+          if (tunnelEdgeBox) tunnelEdgeBox.style.display = 'none';
+          if (tunnelRoutingHint) tunnelRoutingHint.style.display = 'none';
+          if (tunnelEdgeColoText) tunnelEdgeColoText.textContent = '---';
+          if (tunnelLatencyText) tunnelLatencyText.textContent = '-- ms';
+          clearTimeout(window._tunnelColoRetryTimer);
+          if (tunnelEdgeBox) tunnelEdgeBox.style.display = 'none';
+          if (tunnelRoutingHint) tunnelRoutingHint.style.display = 'none';
+          if (tunnelEdgeColoText) tunnelEdgeColoText.textContent = '---';
+          if (tunnelLatencyText) tunnelLatencyText.textContent = '-- ms';
+          clearTimeout(window._tunnelColoRetryTimer);
+          if (tunnelEdgeBox) tunnelEdgeBox.style.display = 'none';
+          if (tunnelRoutingHint) tunnelRoutingHint.style.display = 'none';
+          if (tunnelEdgeColoText) tunnelEdgeColoText.textContent = '---';
+          if (tunnelLatencyText) tunnelLatencyText.textContent = '-- ms';
+          clearTimeout(window._tunnelColoRetryTimer);
 
           if (!st.installed && tunnelNotInstalledBox) {
             tunnelNotInstalledBox.style.display = 'block';
