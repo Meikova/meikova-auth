@@ -307,7 +307,7 @@ def run_tests():
     except Exception:
         qr_status = 0
         loc = ""
-    log_step("GET /api/qr (Rule 18 QR Endpoint)", qr_status in [200, 307] and "qrserver.com" in loc, f"Status: {qr_status}")
+    log_step("GET /api/qr (Rule 18 QR Endpoint)", qr_status == 200 or (qr_status == 307 and "qrserver.com" in loc), f"Status: {qr_status}")
 
     # 21. Rule 15: Dynamic App Download Resolvers
     code, win_asset = http_request(f"{base_url}/api/download/app/windows")

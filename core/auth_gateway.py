@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 
 from .universal_sso import issue_universal_token, verify_universal_token, DEFAULT_PUB_KEY
+from .security_shield import strike_tracker, dummy_pbkdf2_hash
 
 CORE_DIR = Path(__file__).resolve().parent
 AUTH_ROOT = CORE_DIR.parent
@@ -380,12 +381,29 @@ class AuthGateway:
         if not clean_id or not password:
             return None
 
+        # Check brute-force lockout on IP and identifier
+        ip_key = f"login_ip:{ip_address or '127.0.0.1'}"
+        user_key = f"login_user:{clean_id}"
+
+        ip_locked, _, ip_retry = strike_tracker.check_lock(ip_key)
+        user_locked, _, user_retry = strike_tracker.check_lock(user_key)
+        if ip_locked or user_locked:
+            retry_sec = max(ip_retry, user_retry)
+            raise ValueError(f"AUTH_RATE_LIMITED:{retry_sec}")
+
         row = self.fetchone(
             "SELECT id, username, email, display_name, password_hash, salt, role, totp_enabled FROM users "
             "WHERE LOWER(username) = ? OR LOWER(email) = ?",
             (clean_id, clean_id)
         )
         if not row:
+            # Timing Equalizer: Run dummy PBKDF2 600,000 rounds
+            dummy_pbkdf2_hash(password)
+            delay = strike_tracker.get_artificial_delay(ip_key)
+            if delay > 0:
+                time.sleep(delay)
+            strike_tracker.record_failure(ip_key)
+            strike_tracker.record_failure(user_key)
             return None
 
         user_id = self._row_val(row, "id", 0)
@@ -398,7 +416,19 @@ class AuthGateway:
         totp_enabled = bool(self._row_val(row, "totp_enabled", 7, 0))
 
         if not self.verify_password_hash(password, salt, expected_hash):
+            delay = strike_tracker.get_artificial_delay(ip_key)
+            if delay > 0:
+                time.sleep(delay)
+            is_locked, strikes, retry_sec = strike_tracker.record_failure(user_key)
+            strike_tracker.record_failure(ip_key)
+            if is_locked:
+                self.log_audit(user_id, "SECURITY_ALERT_ACCOUNT_LOCKED", ip_address=ip_address, user_agent=user_agent)
+                raise ValueError(f"AUTH_RATE_LIMITED:{retry_sec}")
             return None
+
+        # Reset login strikes on successful credential verification
+        strike_tracker.record_success(ip_key)
+        strike_tracker.record_success(user_key)
 
         if totp_enabled:
             temp_token = issue_universal_token(
@@ -815,6 +845,11 @@ class AuthGateway:
         user_agent: Optional[str] = None,
         ip_address: Optional[str] = None
     ) -> Dict[str, Any]:
+        totp_key = f"totp_user:{user_id}"
+        is_locked, _, retry_sec = strike_tracker.check_lock(totp_key)
+        if is_locked:
+            raise ValueError(f"AUTH_RATE_LIMITED:{retry_sec}")
+
         clean_code = str(code or "").strip().upper()
         if not clean_code:
             raise ValueError("Mã xác thực không được để trống.")
@@ -859,8 +894,15 @@ class AuthGateway:
                 pass
 
         if not is_valid:
+            is_locked, strikes, retry_sec = strike_tracker.record_failure(totp_key)
+            if is_locked:
+                self.log_audit(user_id, "SECURITY_ALERT_TOTP_LOCKED", ip_address=ip_address, user_agent=user_agent)
+                raise ValueError(f"AUTH_RATE_LIMITED:{retry_sec}")
             self.log_audit(user_id, "AUTH_TOTP_FAILED", ip_address=ip_address, user_agent=user_agent)
             raise ValueError("Mã xác thực TOTP hoặc mã dự phòng không chính xác.")
+
+        # Clear strikes on valid TOTP
+        strike_tracker.record_success(totp_key)
 
         session_id = self.create_session(
             user_id=user_id,
@@ -954,6 +996,11 @@ class AuthGateway:
         return True
 
     def verify_pin(self, user_id: str, pin: str) -> bool:
+        pin_key = f"pin_user:{user_id}"
+        is_locked, _, retry_sec = strike_tracker.check_lock(pin_key)
+        if is_locked:
+            raise ValueError(f"AUTH_RATE_LIMITED:{retry_sec}")
+
         clean_pin = str(pin or "").strip()
         if len(clean_pin) != 6 or not clean_pin.isdigit():
             raise ValueError("Mã PIN phải gồm đúng 6 chữ số.")
@@ -970,9 +1017,15 @@ class AuthGateway:
             raise ValueError("Chưa thiết lập mã PIN cho tài khoản.")
 
         if not self.verify_password_hash(clean_pin, pin_salt, pin_hash):
+            is_locked, strikes, retry_sec = strike_tracker.record_failure(pin_key)
+            if is_locked:
+                self.log_audit(user_id, "SECURITY_ALERT_PIN_LOCKED")
+                raise ValueError(f"AUTH_RATE_LIMITED:{retry_sec}")
             self.log_audit(user_id, "AUTH_PIN_VERIFY_FAILED")
             raise ValueError("Mã PIN không chính xác.")
 
+        # Reset strikes on valid PIN verification
+        strike_tracker.record_success(pin_key)
         self.log_audit(user_id, "AUTH_PIN_VERIFIED")
         return True
 
@@ -1265,6 +1318,21 @@ class AuthGateway:
                 "avatar_url": avatar_url,
                 "role": "user"
             }
+        }
+
+    def get_crl(self) -> Dict[str, Any]:
+        """Tra cứu danh sách các phiên hoặc người dùng đã bị thu hồi (Certificate/Token Revocation List)."""
+        rows = self.execute("SELECT id, user_id, revoked_at FROM sessions WHERE revoked_at IS NOT NULL ORDER BY revoked_at DESC LIMIT 100")
+        revoked_sessions = []
+        for r in rows:
+            revoked_sessions.append({
+                "session_id": self._row_val(r, "id", 0),
+                "user_id": self._row_val(r, "user_id", 1),
+                "revoked_at": self._row_val(r, "revoked_at", 2),
+            })
+        return {
+            "revoked": revoked_sessions,
+            "count": len(revoked_sessions),
         }
 
     @staticmethod

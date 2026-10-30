@@ -38,6 +38,7 @@ from pydantic import BaseModel, Field
 from core.auth_gateway import AuthGateway, gateway_instance, get_google_client_id
 from core.universal_sso import verify_universal_token, issue_universal_token
 from core.tunnel_manager import tunnel_manager
+from core.security_shield import SecurityShieldMiddleware
 
 app = FastAPI(
     title="Meikova Auth Gateway & Credential Manager",
@@ -45,7 +46,10 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# CORS configuration
+# 1. Security Shield: Payload Limiter (Max 1MB) & Security Headers
+app.add_middleware(SecurityShieldMiddleware)
+
+# 2. CORS configuration
 origins_env = os.environ.get("CORS_ORIGINS", "*").strip()
 allow_origins = ["*"] if origins_env == "*" else [o.strip() for o in origins_env.split(",")]
 
@@ -359,10 +363,21 @@ def toggle_tunnel():
 
 @app.get("/api/qr")
 def qr_endpoint(data: str = Query(...), format: Optional[str] = Query(None)):
-    encoded = urllib.parse.quote(data.strip())
-    # 307 Redirect to high-contrast qrserver matching dark theme
-    target_url = f"https://api.qrserver.com/v1/create-qr-code/?data={encoded}&size=260x260&bgcolor=070D17&color=A6C5FF"
-    return RedirectResponse(url=target_url, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+    from core.qr_engine import QREngine
+    svg = QREngine.generate_svg(data.strip())
+    return Response(content=svg, media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/api/auth/crl")
+def get_crl_endpoint():
+    crl_info = gateway_instance.get_crl()
+    import time
+    return {
+        "status": "ok",
+        "code": "AUTH_CRL_RETRIEVED",
+        "timestamp": int(time.time()),
+        **crl_info
+    }
 
 
 # Dynamic App Download Resolvers (Rule 15)
@@ -416,14 +431,32 @@ def login_user(req: LoginRequest, request: Request):
         )
 
     ip, ua, d_name, d_type = _client_telemetry(request)
-    result = gateway_instance.authenticate(
-        ident,
-        req.password,
-        device_name=d_name,
-        device_type=d_type,
-        user_agent=ua,
-        ip_address=ip
-    )
+    try:
+        result = gateway_instance.authenticate(
+            ident,
+            req.password,
+            device_name=d_name,
+            device_type=d_type,
+            user_agent=ua,
+            ip_address=ip
+        )
+    except ValueError as e:
+        err_str = str(e)
+        if err_str.startswith("AUTH_RATE_LIMITED"):
+            retry_sec = err_str.split(":", 1)[1] if ":" in err_str else "900"
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail={
+                    "code": "AUTH_RATE_LIMITED",
+                    "message": f"Tài khoản hoặc địa chỉ IP bị tạm khóa do nhập sai quá 5 lần. Thử lại sau {retry_sec} giây.",
+                    "retry_after": int(retry_sec)
+                },
+                headers={"Retry-After": str(retry_sec)}
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "AUTH_LOGIN_FAILED", "message": err_str}
+        )
     if not result:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -722,9 +755,21 @@ def verify_totp_login_endpoint(req: TotpVerifyLoginRequest, request: Request):
         result["code"] = "AUTH_LOGIN_SUCCESS"
         return result
     except ValueError as ex:
+        err_str = str(ex)
+        if err_str.startswith("AUTH_RATE_LIMITED"):
+            retry_sec = err_str.split(":", 1)[1] if ":" in err_str else "900"
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail={
+                    "code": "AUTH_RATE_LIMITED",
+                    "message": f"Phiên xác thực 2FA đã bị khóa do nhập sai quá 5 lần. Vui lòng thử lại sau {retry_sec} giây.",
+                    "retry_after": int(retry_sec)
+                },
+                headers={"Retry-After": str(retry_sec)}
+            )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "AUTH_TOTP_INVALID", "message": str(ex)}
+            detail={"code": "AUTH_TOTP_INVALID", "message": err_str}
         )
 
 
@@ -763,9 +808,21 @@ def verify_pin_endpoint(req: PinVerifyRequest, authorization: Optional[str] = He
         gateway_instance.verify_pin(user["id"], req.pin)
         return {"code": "AUTH_PIN_VERIFIED", "success": True, "verified": True}
     except ValueError as ex:
+        err_str = str(ex)
+        if err_str.startswith("AUTH_RATE_LIMITED"):
+            retry_sec = err_str.split(":", 1)[1] if ":" in err_str else "900"
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail={
+                    "code": "AUTH_RATE_LIMITED",
+                    "message": f"Mã PIN đã bị khóa do nhập sai quá 5 lần. Vui lòng thử lại sau {retry_sec} giây.",
+                    "retry_after": int(retry_sec)
+                },
+                headers={"Retry-After": str(retry_sec)}
+            )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "AUTH_PIN_INVALID", "message": str(ex)}
+            detail={"code": "AUTH_PIN_INVALID", "message": err_str}
         )
 
 
